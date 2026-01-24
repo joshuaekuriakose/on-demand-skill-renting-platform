@@ -1,0 +1,13 @@
+# Flutter
+build/
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+
+# Node.js
+backend/node_modules/
+backend/.env
+
+# Logs
+*.log
