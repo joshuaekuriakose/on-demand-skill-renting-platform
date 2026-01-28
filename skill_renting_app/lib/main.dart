@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'features/auth/screens/login_screen.dart';
+import 'core/utils/app_entry.dart';
 
 void main() {
   runApp(const SkillRentingApp());
@@ -14,7 +14,7 @@ class SkillRentingApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Skill Renting App',
       theme: ThemeData(useMaterial3: true),
-      home: const LoginScreen(),
+      home: const AppEntry(),
     );
   }
 }

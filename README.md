@@ -1,16 +1,33 @@
-# skill_renting_app
+# On-Demand Skill Renting Platform
 
-A new Flutter project.
+## Project Description
+The On-Demand Skill Renting Platform is a real-world oriented application that enables users to offer and rent skills on demand.  
+The platform is designed with a strong focus on trust, role-based access control, scalability and real-world usability.
 
-## Getting Started
+The application consists of a Flutter-based frontend and a Node.js backend, following a modular and scalable architecture suitable for real-world deployment.
 
-This project is a starting point for a Flutter application.
+## Current Features
+### Frontend (Flutter)
+- User authentication
+- Role-based dashboards (user / service provider)
+- Modular and scalable Flutter architecture
 
-A few resources to get you started if this is your first Flutter project:
+### Backend (Node.js)
+- RESTful API architecture
+- Role-based access handling
+- Structured backend using controllers, routes, and models
+- Environment-based configuration support
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Technology Stack
+- Frontend: Flutter  
+- Language: Dart (Frontend)  
+- Backend: Node.js with Express  
+- Database: MongoDB  
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Project Status
+Under active development as part of the **Integrated MCA (Semester 10)** project.  
+Additional features such as skill booking, skill verification and secure transaction handling will be implemented in upcoming development phases.
+
+## Author
+Joshua Kuriakose  
+S10 Integrated MCA (21–26)

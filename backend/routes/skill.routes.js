@@ -3,6 +3,19 @@ const router = express.Router();
 const { protect } = require("../middleware/auth.middleware");
 const Skill = require("../models/Skill");
 
+// Get all skills (public)
+router.get("/", async (req, res) => {
+  try {
+    const skills = await Skill.find()
+      .populate("provider", "name email")
+      .sort({ createdAt: -1 });
+
+    res.json(skills);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Create skill (provider only)
 router.post("/", protect, async (req, res) => {
   try {

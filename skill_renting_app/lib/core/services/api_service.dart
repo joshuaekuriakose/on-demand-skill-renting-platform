@@ -22,4 +22,22 @@ class ApiService {
       "data": jsonDecode(response.body),
     };
   }
+
+  static Future<Map<String, dynamic>> get(
+  String endpoint, {
+  String? token,
+}) async {
+  final response = await http.get(
+    Uri.parse("${ApiConstants.baseUrl}$endpoint"),
+    headers: {
+      if (token != null) "Authorization": "Bearer $token",
+    },
+  );
+
+  return {
+    "statusCode": response.statusCode,
+    "data": jsonDecode(response.body),
+  };
+}
+
 }

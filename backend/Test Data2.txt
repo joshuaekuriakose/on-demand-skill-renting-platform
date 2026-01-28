@@ -1,0 +1,7 @@
+seeker
+email id: seekertest1@123
+pass : seekertest1123
+
+provider
+email id: providertest2@123
+pass : providertest2123
