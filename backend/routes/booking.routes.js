@@ -27,9 +27,12 @@ router.post("/", protect, async (req, res) => {
       seeker: req.user._id,
       provider: skill.provider,
       skill: skill._id,
-      startDate,
-      endDate,
-      duration,
+
+       // Default scheduling (for now)
+  startDate: startDate || new Date(),
+  endDate: endDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
+  duration: duration || 1,
+
       pricingSnapshot: {
         amount: skill.pricing.amount,
         unit: skill.pricing.unit,

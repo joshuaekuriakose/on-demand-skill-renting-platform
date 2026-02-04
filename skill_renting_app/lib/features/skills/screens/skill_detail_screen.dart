@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/skill_model.dart';
+import '../../bookings/booking_service.dart';
 
 class SkillDetailScreen extends StatelessWidget {
   final SkillModel skill;
@@ -32,15 +33,26 @@ class SkillDetailScreen extends StatelessWidget {
             Text(skill.description),
             const Spacer(),
             ElevatedButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Booking UI coming next"),
-                  ),
-                );
-              },
-              child: const Text("Book Skill"),
-            ),
+  onPressed: () async {
+    final success =
+        await BookingService.createBooking(skill.id);
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? "Booking created successfully"
+              : "Booking failed",
+        ),
+      ),
+    );
+  },
+  child: const Text("Book Skill"),
+),
+
+
           ],
         ),
       ),

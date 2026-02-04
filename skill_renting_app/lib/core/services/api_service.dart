@@ -30,6 +30,7 @@ class ApiService {
   final response = await http.get(
     Uri.parse("${ApiConstants.baseUrl}$endpoint"),
     headers: {
+      "Content-Type": "application/json", // 👈 ADD THIS
       if (token != null) "Authorization": "Bearer $token",
     },
   );
@@ -39,5 +40,27 @@ class ApiService {
     "data": jsonDecode(response.body),
   };
 }
+
+static Future<Map<String, dynamic>> put(
+  String endpoint,
+  Map<String, dynamic> body, {
+  String? token,
+}) async {
+
+  final response = await http.put(
+    Uri.parse("${ApiConstants.baseUrl}$endpoint"),
+    headers: {
+      "Content-Type": "application/json",
+      if (token != null) "Authorization": "Bearer $token",
+    },
+    body: jsonEncode(body),
+  );
+
+  return {
+    "statusCode": response.statusCode,
+    "data": jsonDecode(response.body),
+  };
+}
+
 
 }

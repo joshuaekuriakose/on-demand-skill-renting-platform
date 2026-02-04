@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/auth_storage.dart';
 import '../../auth/screens/login_screen.dart';
+import 'provider_bookings_screen.dart';
+
 
 class ProviderDashboard extends StatelessWidget {
   const ProviderDashboard({super.key});
@@ -30,9 +32,20 @@ class ProviderDashboard extends StatelessWidget {
           ),
         ],
       ),
-      body: const Center(
-        child: Text("Welcome, Provider"),
-      ),
+      body: Center(
+  child: ElevatedButton(
+    onPressed: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ProviderBookingsScreen(),
+        ),
+      );
+    },
+    child: const Text("View Bookings"),
+  ),
+),
+
     );
   }
 }

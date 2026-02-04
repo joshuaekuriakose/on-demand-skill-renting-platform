@@ -5,3 +5,7 @@ pass : seekertest1123
 provider
 email id: providertest2@123
 pass : providertest2123
+
+provider
+email id: provider4@test.com
+pass : provider123
