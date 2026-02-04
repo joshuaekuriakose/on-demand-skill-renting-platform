@@ -43,6 +43,11 @@ router.post("/", protect, async (req, res) => {
       comment,
     });
 
+    // Mark booking as reviewed
+booking.isReviewed = true;
+await booking.save();
+
+
     /* =======================
        UPDATE AGGREGATE RATINGS
     ======================= */

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../core/services/auth_storage.dart';
 import '../../auth/screens/login_screen.dart';
 import '../../skills/screens/skill_list_screen.dart';
+import 'package:skill_renting_app/features/bookings/screens/seeker_bookings_screen.dart';
+
 
 class SeekerDashboard extends StatelessWidget {
   const SeekerDashboard({super.key});
@@ -30,19 +32,43 @@ class SeekerDashboard extends StatelessWidget {
           ),
         ],
       ),
+      
       body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const SkillListScreen(),
-              ),
-            );
-          },
-          child: const Text("Browse Skills"),
-        ),
+  child: Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+
+      // Browse Skills
+      ElevatedButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const SkillListScreen(),
+            ),
+          );
+        },
+        child: const Text("Browse Skills"),
       ),
+
+      const SizedBox(height: 16),
+
+      // My Bookings
+      ElevatedButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const SeekerBookingsScreen(),
+            ),
+          );
+        },
+        child: const Text("My Bookings"),
+      ),
+    ],
+  ),
+),
+
     );
   }
 }

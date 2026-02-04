@@ -61,6 +61,39 @@ static Future<List<BookingModel>> fetchProviderBookings() async {
   return [];
 }
 
+static Future<List<BookingModel>> fetchMyBookings() async {
+  final token = await AuthStorage.getToken();
+
+  if (token == null) {
+    print("❌ No token (seeker)");
+    return [];
+  }
+
+  final response = await ApiService.get(
+    "/bookings/my",
+    token: token,
+  );
+
+  print("📡 MyBookings Status: ${response["statusCode"]}");
+  print("📦 MyBookings Data: ${response["data"]}");
+
+  if (response["statusCode"] == 200) {
+    final data = response["data"];
+
+    if (data is List) {
+      print("✅ Length: ${data.length}");
+
+      return data
+          .map((json) => BookingModel.fromJson(json))
+          .toList();
+    }
+  }
+
+  return [];
+}
+
+
+
 static Future<void> updateBookingStatus(
   String bookingId,
   String action,
