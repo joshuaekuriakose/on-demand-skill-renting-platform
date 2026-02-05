@@ -62,5 +62,21 @@ static Future<Map<String, dynamic>> put(
   };
 }
 
+static Future<Map<String, dynamic>> delete(
+  String endpoint, {
+  String? token,
+}) async {
+  final response = await http.delete(
+    Uri.parse("${ApiConstants.baseUrl}$endpoint"),
+    headers: {
+      if (token != null) "Authorization": "Bearer $token",
+    },
+  );
+
+  return {
+    "statusCode": response.statusCode,
+    "data": jsonDecode(response.body),
+  };
+}
 
 }

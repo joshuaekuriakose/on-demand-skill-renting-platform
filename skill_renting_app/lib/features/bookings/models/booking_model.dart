@@ -43,7 +43,7 @@ skillTitle: json["skill"] is Map
         ? json["provider"]["name"] ?? "Unknown"
         : "Provider",
         
-        isReviewed: json["isReviewed"] ?? false,
+      isReviewed: json["isReviewed"] ?? false,
 
   );
 }

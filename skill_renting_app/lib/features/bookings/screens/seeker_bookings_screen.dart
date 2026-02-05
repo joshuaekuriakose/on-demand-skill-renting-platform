@@ -68,20 +68,34 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
 
                             Text("Provider: ${b.providerName}"),
                             if (b.status == "completed")
-  Padding(
-    padding: const EdgeInsets.only(top: 8),
-    child: ElevatedButton(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ReviewScreen(booking: b),
-          ),
-        );
-      },
-      child: const Text("Give Review"),
+ Padding(
+  padding: const EdgeInsets.only(top: 8),
+  child: ElevatedButton(
+    onPressed: b.isReviewed
+        ? () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Already reviewed"),
+              ),
+            );
+          }
+        : () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ReviewScreen(booking: b),
+              ),
+            );
+
+            _loadBookings(); // Refresh after review
+          },
+
+    child: Text(
+      b.isReviewed ? "Reviewed" : "Give Review",
     ),
   ),
+),
+
 
 
                             const SizedBox(height: 6),

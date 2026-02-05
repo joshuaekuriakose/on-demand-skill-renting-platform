@@ -1,4 +1,5 @@
 import '../../core/services/api_service.dart';
+import '../../core/services/auth_storage.dart';
 import 'models/skill_model.dart';
 
 class SkillService {
@@ -12,4 +13,52 @@ class SkillService {
     }
     return [];
   }
+
+  static Future<List<dynamic>> fetchMySkills() async {
+    final token = await AuthStorage.getToken();
+
+    if (token == null) return [];
+
+    final response = await ApiService.get(
+      "/skills/my",
+      token: token,
+    );
+
+    if (response["statusCode"] == 200) {
+      return response["data"];
+    }
+
+    return [];
+  }
+
+  static Future<bool> updateSkill(
+  String id,
+  Map<String, dynamic> data,
+) async {
+  final token = await AuthStorage.getToken();
+
+  if (token == null) return false;
+
+  final response = await ApiService.put(
+    "/skills/$id",
+    data,
+    token: token,
+  );
+
+  return response["statusCode"] == 200;
+}
+
+static Future<bool> deleteSkill(String id) async {
+  final token = await AuthStorage.getToken();
+
+  if (token == null) return false;
+
+  final response = await ApiService.delete(
+    "/skills/$id",
+    token: token,
+  );
+
+  return response["statusCode"] == 200;
+}
+
 }
