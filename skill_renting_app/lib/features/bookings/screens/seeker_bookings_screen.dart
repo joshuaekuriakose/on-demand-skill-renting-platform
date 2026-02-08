@@ -44,70 +44,132 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
           : _bookings.isEmpty
               ? const Center(child: Text("No bookings yet"))
               : ListView.builder(
-                  itemCount: _bookings.length,
-                  itemBuilder: (context, index) {
-                    final b = _bookings[index];
+    padding: const EdgeInsets.all(12),
 
-                    return Card(
-                      margin: const EdgeInsets.all(8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+    itemCount: _bookings.length,
 
-                            Text(
-                              b.skillTitle,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+    itemBuilder: (context, index) {
+      final b = _bookings[index];
 
-                            const SizedBox(height: 4),
+      return Card(
+        elevation: 3,
+        margin: const EdgeInsets.symmetric(vertical: 6),
 
-                            Text("Provider: ${b.providerName}"),
-                            if (b.status == "completed")
- Padding(
-  padding: const EdgeInsets.only(top: 8),
-  child: ElevatedButton(
-    onPressed: b.isReviewed
-        ? () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Already reviewed"),
-              ),
-            );
-          }
-        : () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ReviewScreen(booking: b),
-              ),
-            );
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
 
-            _loadBookings(); // Refresh after review
-          },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
 
-    child: Text(
-      b.isReviewed ? "Reviewed" : "Give Review",
-    ),
-  ),
-),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
 
-
-
-                            const SizedBox(height: 6),
-
-                            Text("Status: ${b.status}"),
-
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+              // Skill Title
+              Text(
+                b.skillTitle,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
+              ),
+
+              const SizedBox(height: 6),
+
+              // Provider
+              Row(
+                children: [
+                  const Icon(Icons.person, size: 16),
+                  const SizedBox(width: 4),
+                  Text(b.providerName),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // Status Badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(b.status),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  b.status.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Review Button (only if completed)
+              if (b.status == "completed")
+                SizedBox(
+                  width: double.infinity,
+
+                  child: ElevatedButton(
+                    onPressed: b.isReviewed
+                        ? () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Already reviewed"),
+                              ),
+                            );
+                          }
+                        : () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ReviewScreen(booking: b),
+                              ),
+                            );
+
+                            _loadBookings();
+                          },
+
+                    child: Text(
+                      b.isReviewed
+                          ? "Reviewed"
+                          : "Give Review",
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  ),
+
     );
   }
+
+  Color _getStatusColor(String status) {
+  switch (status) {
+    case "requested":
+      return Colors.orange;
+
+    case "accepted":
+      return Colors.blue;
+
+    case "completed":
+      return Colors.green;
+
+    case "rejected":
+      return Colors.red;
+
+    default:
+      return Colors.grey;
+  }
+}
+
 }
