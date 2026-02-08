@@ -62,50 +62,96 @@ if (user.role == "provider") {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Login")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      body: Center(
+  child: SingleChildScrollView(
+    padding: const EdgeInsets.all(20),
+    child: Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
+
+            const Icon(
+              Icons.lock_outline,
+              size: 60,
+              color: Colors.indigo,
+            ),
+
+            const SizedBox(height: 16),
+
+            const Text(
+              "Welcome Back",
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 6),
+
+            const Text(
+              "Login to continue",
+              style: TextStyle(color: Colors.grey),
+            ),
+
+            const SizedBox(height: 24),
+
             TextField(
               controller: _emailController,
-              decoration: const InputDecoration(labelText: "Email"),
+              decoration: const InputDecoration(
+                labelText: "Email",
+                prefixIcon: Icon(Icons.email),
+              ),
             ),
-            const SizedBox(height: 12),
+
+            const SizedBox(height: 16),
+
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: "Password"),
+              decoration: const InputDecoration(
+                labelText: "Password",
+                prefixIcon: Icon(Icons.lock),
+              ),
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 24),
+
             if (_error != null)
-              Text(_error!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red),
+              ),
+
+            if (_error != null) const SizedBox(height: 10),
+
             ElevatedButton(
               onPressed: _isLoading ? null : _login,
               child: _isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const CircularProgressIndicator(color: Colors.white)
                   : const Text("Login"),
             ),
-            TextButton(
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const RegisterScreen(),
-      ),
-    );
-  },
-  child: const Text("Create an account"),
-),
 
+            const SizedBox(height: 16),
+
+            TextButton(
+              onPressed: () {
+                Navigator.pushNamed(context, "/register");
+              },
+              child: const Text("Create an account"),
+            ),
           ],
         ),
       ),
+    ),
+  ),
+),
+
     );
   }
 }

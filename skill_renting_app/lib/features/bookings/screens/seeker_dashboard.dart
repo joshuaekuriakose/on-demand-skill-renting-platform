@@ -33,14 +33,50 @@ class SeekerDashboard extends StatelessWidget {
         ],
       ),
       
-      body: Center(
+      body: Padding(
+  padding: const EdgeInsets.all(16),
   child: Column(
-    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
 
+      const SizedBox(height: 20),
+
+      // Welcome Card
+      Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                "Welcome 👋",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                "What would you like to do today?",
+                style: TextStyle(fontSize: 16),
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 30),
+
       // Browse Skills
-      ElevatedButton(
-        onPressed: () {
+      _DashboardCard(
+        icon: Icons.search,
+        title: "Browse Skills",
+        subtitle: "Find professionals near you",
+        onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -48,14 +84,16 @@ class SeekerDashboard extends StatelessWidget {
             ),
           );
         },
-        child: const Text("Browse Skills"),
       ),
 
       const SizedBox(height: 16),
 
       // My Bookings
-      ElevatedButton(
-        onPressed: () {
+      _DashboardCard(
+        icon: Icons.calendar_today,
+        title: "My Bookings",
+        subtitle: "View your active bookings",
+        onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -63,12 +101,81 @@ class SeekerDashboard extends StatelessWidget {
             ),
           );
         },
-        child: const Text("My Bookings"),
       ),
     ],
   ),
 ),
 
+
+    );
+  }
+}
+
+class _DashboardCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _DashboardCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: Theme.of(context).primaryColor,
+                child: Icon(
+                  icon,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+
+              const SizedBox(width: 16),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+
+              const Icon(Icons.arrow_forward_ios, size: 16),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

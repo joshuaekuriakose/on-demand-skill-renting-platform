@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import '../models/booking_model.dart';
@@ -50,82 +49,143 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen> {
       appBar: AppBar(
         title: const Text("My Bookings"),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _bookings.isEmpty
-              ? const Center(child: Text("No bookings yet"))
-              : ListView.builder(
-                  itemCount: _bookings.length,
-                  itemBuilder: (context, index) {
-                    final b = _bookings[index];
+      body: SafeArea(
+  child: RefreshIndicator(
+    onRefresh: _loadBookings,
 
-                    return Card(
-                      margin: const EdgeInsets.all(8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              b.skillTitle,
+    child: _loading
+        ? const Center(child: CircularProgressIndicator())
+
+        : _bookings.isEmpty
+            ? const Center(child: Text("No bookings yet"))
+
+            : ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _bookings.length,
+                itemBuilder: (context, index) {
+                  final b = _bookings[index];
+
+                  return Card(
+                    elevation: 3,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+
+                          // Skill Title
+                          Text(
+                            b.skillTitle,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          // Seeker
+                          Row(
+                            children: [
+                              const Icon(Icons.person, size: 16),
+                              const SizedBox(width: 4),
+                              Text(b.seekerName),
+                            ],
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          // Status Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(b.status),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              b.status.toUpperCase(),
                               style: const TextStyle(
-                                fontSize: 18,
+                                color: Colors.white,
                                 fontWeight: FontWeight.bold,
+                                fontSize: 12,
                               ),
                             ),
+                          ),
 
-                            const SizedBox(height: 4),
+                          const SizedBox(height: 12),
 
-                            Text("By: ${b.seekerName}"),
+                          // Actions
+Wrap(
+  spacing: 8,
+  runSpacing: 8,
+  children: [
 
-                            const SizedBox(height: 6),
+    if (b.status == "requested")
+      ElevatedButton(
+        onPressed: () =>
+            _updateStatus(b.id, "accept"),
+        child: const Text("Accept"),
+      ),
 
-                            Text("Status: ${b.status}"),
+    if (b.status == "requested")
+      ElevatedButton(
+        onPressed: () =>
+            _updateStatus(b.id, "reject"),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red,
+        ),
+        child: const Text("Reject"),
+      ),
 
-                            const SizedBox(height: 10),
+    if (b.status == "accepted")
+      ElevatedButton(
+        onPressed: () =>
+            _updateStatus(b.id, "complete"),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+        ),
+        child: const Text("Complete"),
+      ),
+  ],
+),
 
-                            Row(
-                              children: [
-
-                                // Accept
-                                if (b.status == "requested")
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        _updateStatus(b.id, "accept"),
-                                    child: const Text("Accept"),
-                                  ),
-
-                                const SizedBox(width: 8),
-
-                                // Reject
-                                if (b.status == "requested")
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        _updateStatus(b.id, "reject"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                    ),
-                                    child: const Text("Reject"),
-                                  ),
-
-                                // Complete
-                                if (b.status == "accepted")
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        _updateStatus(b.id, "complete"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                    ),
-                                    child: const Text("Complete"),
-                                  ),
-                              ],
-                            )
-                          ],
-                        ),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+              ),
+  ),
+),
+
     );
   }
+
+Color _getStatusColor(String status) {
+  switch (status) {
+    case "requested":
+      return Colors.orange;
+
+    case "accepted":
+      return Colors.blue;
+
+    case "completed":
+      return Colors.green;
+
+    case "rejected":
+      return Colors.red;
+
+    default:
+      return Colors.grey;
+  }
+}
+
+
 }

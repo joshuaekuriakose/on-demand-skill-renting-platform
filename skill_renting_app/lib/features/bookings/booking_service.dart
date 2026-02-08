@@ -29,7 +29,7 @@ static Future<List<BookingModel>> fetchProviderBookings() async {
   final token = await AuthStorage.getToken();
 
   if (token == null) {
-    print("❌ No token");
+    print("❌ No token found");
     return [];
   }
 
@@ -38,28 +38,22 @@ static Future<List<BookingModel>> fetchProviderBookings() async {
     token: token,
   );
 
-  print("📡 Status: ${response["statusCode"]}");
-  print("📦 Raw Data: ${response["data"]}");
+  print("📡 ProviderBookings Status: ${response["statusCode"]}");
+  print("📦 ProviderBookings Data: ${response["data"]}");
 
   if (response["statusCode"] == 200) {
-    final data = response["data"];
+    final list = response["data"] as List;
 
-    if (data is List) {
-      print("✅ List length: ${data.length}");
+    print("✅ Length: ${list.length}");
 
-      return data
-          .map((json) {
-            print("➡️ Item: $json");
-            return BookingModel.fromJson(json);
-          })
-          .toList();
-    } else {
-      print("❌ Data is not a List");
-    }
+    return list
+        .map((json) => BookingModel.fromJson(json))
+        .toList();
   }
 
   return [];
 }
+
 
 static Future<List<BookingModel>> fetchMyBookings() async {
   final token = await AuthStorage.getToken();

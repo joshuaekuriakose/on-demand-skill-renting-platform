@@ -15,38 +15,42 @@ class BookingModel {
     required this.providerName,
     required this.skillId,
     required this.isReviewed,
-
   });
 
   factory BookingModel.fromJson(Map<String, dynamic> json) {
-  return BookingModel(
-    id: json["_id"] ?? "",
-    status: json["status"] ?? "",
 
-    // Skill
-   skillId: json["skill"] is Map
-    ? json["skill"]["_id"] ?? ""
-    : "",
+    final skill = json["skill"];
+    final seeker = json["seeker"];
+    final provider = json["provider"];
 
-skillTitle: json["skill"] is Map
-    ? json["skill"]["title"] ?? ""
-    : "",
+    return BookingModel(
+      // ID
+      id: json["_id"] ?? "",
 
+      // Status
+      status: json["status"] ?? "unknown",
 
-    // Seeker (object or id)
-    seekerName: json["seeker"] is Map
-        ? json["seeker"]["name"] ?? "Unknown"
-        : "You",
+      // Skill
+      skillId: skill is Map
+          ? skill["_id"] ?? ""
+          : "",
 
-    // Provider (object or id)
-    providerName: json["provider"] is Map
-        ? json["provider"]["name"] ?? "Unknown"
-        : "Provider",
-        
-      isReviewed: json["isReviewed"] ?? false,
+      skillTitle: skill is Map
+          ? skill["title"] ?? "Unknown Skill"
+          : "Unknown Skill",
 
-  );
-}
+      // Seeker
+      seekerName: seeker is Map
+          ? seeker["name"] ?? "Unknown"
+          : "Unknown",
 
+      // Provider
+      providerName: provider is Map
+          ? provider["name"] ?? "Unknown"
+          : "Unknown",
 
+      // Review
+      isReviewed: json["isReviewed"] == true,
+    );
+  }
 }

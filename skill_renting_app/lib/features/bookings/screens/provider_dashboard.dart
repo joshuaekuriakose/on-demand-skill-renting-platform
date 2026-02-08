@@ -36,13 +36,52 @@ class ProviderDashboard extends StatelessWidget {
   ),
 
   body: Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
+  padding: const EdgeInsets.all(16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
 
-        ElevatedButton(
-          onPressed: () {
+      // Welcome Card
+      Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Welcome 👋",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text("Manage your skills and bookings"),
+            ],
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 20),
+
+      // View Bookings
+      Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ListTile(
+          leading: const CircleAvatar(
+            child: Icon(Icons.book_online),
+          ),
+          title: const Text("View Bookings"),
+          subtitle: const Text("Manage customer requests"),
+          trailing: const Icon(Icons.arrow_forward_ios),
+          onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -50,13 +89,25 @@ class ProviderDashboard extends StatelessWidget {
               ),
             );
           },
-          child: const Text("View Bookings"),
         ),
+      ),
 
-        const SizedBox(height: 16),
+      const SizedBox(height: 16),
 
-        ElevatedButton(
-          onPressed: () {
+      // My Skills
+      Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ListTile(
+          leading: const CircleAvatar(
+            child: Icon(Icons.build),
+          ),
+          title: const Text("My Skills"),
+          subtitle: const Text("View and manage your services"),
+          trailing: const Icon(Icons.arrow_forward_ios),
+          onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -64,12 +115,12 @@ class ProviderDashboard extends StatelessWidget {
               ),
             );
           },
-          child: const Text("My Skills"),
         ),
-
-      ],
-    ),
+      ),
+    ],
   ),
+),
+
 );
   }
 }
