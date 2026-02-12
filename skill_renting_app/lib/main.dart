@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/utils/app_entry.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
+import 'package:skill_renting_app/features/auth/screens/register_screen.dart';
 
 
 void main() {
@@ -63,6 +64,11 @@ class SkillRentingApp extends StatelessWidget {
 
 
   home: LoginScreen(),
+
+routes: {
+  "/login": (context) => LoginScreen(),
+  "/register": (context) => RegisterScreen(),
+},
 );
 
   }
