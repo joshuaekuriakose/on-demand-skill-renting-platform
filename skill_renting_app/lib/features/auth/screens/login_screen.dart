@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../auth_service.dart';
 import 'register_screen.dart';
 import '../../../core/services/auth_storage.dart';
-import '../../bookings/screens/seeker_dashboard.dart';
-import '../../bookings/screens/provider_dashboard.dart';
+//import '../../bookings/screens/seeker_dashboard.dart';
+//import '../../bookings/screens/provider_dashboard.dart';
+import 'package:skill_renting_app/features/dashboard/main_dashboard.dart';
+
 
 
 class LoginScreen extends StatefulWidget {
@@ -44,17 +46,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
 if (!mounted) return;
 
-if (user.role == "provider") {
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(builder: (_) => const ProviderDashboard()),
-  );
-} else {
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(builder: (_) => const SeekerDashboard()),
-  );
-}
+Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(
+    builder: (_) => const MainDashboard(),
+  ),
+);
+
+
 
   }
 

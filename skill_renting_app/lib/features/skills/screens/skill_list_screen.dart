@@ -19,132 +19,153 @@ class _SkillListScreenState extends State<SkillListScreen> {
     super.initState();
     _skills = SkillService.fetchSkills();
   }
+Future<void> _searchSkills(String value) async {
+  if (value.isEmpty) {
+    _skills = SkillService.fetchSkills();
+  } else {
+    _skills = SkillService.searchSkills(value);
+  }
+
+  setState(() {});
+}
+
+
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Available Skills")),
-      body: FutureBuilder<List<SkillModel>>(
-        future: _skills,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Column(
+  children: [
 
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No skills available"));
-          }
-
-          final skills = snapshot.data!;
-
-          return ListView.builder(
-  padding: const EdgeInsets.all(12),
-
-  itemCount: skills.length,
-
-  itemBuilder: (context, index) {
-    final skill = skills[index];
-
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.symmetric(vertical: 6),
-
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+    // Search Bar
+    Padding(
+      padding: const EdgeInsets.all(10),
+      child: TextField(
+        decoration: const InputDecoration(
+          hintText: "Search skills...",
+          prefixIcon: Icon(Icons.search),
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          _searchSkills(value);
+        },
       ),
+    ),
 
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+    // Skill List
+    Expanded(
+  child: FutureBuilder<List<SkillModel>>(
+    future: _skills,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SkillDetailScreen(skill: skill),
+      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        return const Center(child: Text("No skills available"));
+      }
+
+      final skills = snapshot.data!;
+
+      return ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: skills.length,
+        itemBuilder: (context, index) {
+          final skill = skills[index];
+
+          return Card(
+            elevation: 3,
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        SkillDetailScreen(skill: skill),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      skill.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      skill.category,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.indigo.shade50,
+                            borderRadius:
+                                BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            "₹${skill.price}/${skill.pricingUnit}",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.indigo,
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star,
+                              color: Colors.amber,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              skill.rating
+                                  .toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontWeight:
+                                    FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
           );
         },
+      );
+    },
+  ),
+),
 
-        child: Padding(
-          padding: const EdgeInsets.all(12),
+  ],
+),
 
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              // Title
-              Text(
-                skill.title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 4),
-
-              // Category
-              Text(
-                skill.category,
-                style: const TextStyle(
-                  color: Colors.grey,
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-
-                  // Price
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      "₹${skill.price}/${skill.pricingUnit}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.indigo,
-                      ),
-                    ),
-                  ),
-
-                  // Rating
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.star,
-                        color: Colors.amber,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        skill.rating.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  },
-);
-
-        },
-      ),
     );
   }
 }

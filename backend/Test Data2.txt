@@ -9,3 +9,7 @@ pass : providertest2123
 provider
 email id: provider4@test.com
 pass : provider123
+
+user
+email id: test05@test.in
+pass : test5.in

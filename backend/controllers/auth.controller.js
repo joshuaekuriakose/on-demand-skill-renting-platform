@@ -4,7 +4,8 @@ const generateToken = require("../utils/generateToken");
 // Register user
 exports.registerUser = async (req, res) => {
   try {
-    const { name, email, phone, password, role } = req.body;
+
+    const { name, email, phone, password } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -16,14 +17,14 @@ exports.registerUser = async (req, res) => {
       email,
       phone,
       password,
-      role,
+      role : "user"
     });
 
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
-      role: user.role,
+      role :user.role,
       token: generateToken(user._id),
     });
   } catch (error) {
@@ -42,7 +43,7 @@ exports.loginUser = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role : user.role,
         token: generateToken(user._id),
       });
     } else {

@@ -80,4 +80,21 @@ await booking.save();
   }
 });
 
+// Get reviews for a skill (public)
+router.get("/skill/:id", async (req, res) => {
+  try {
+    const reviews = await Review.find({
+      skill: req.params.id,
+      isVisible: true,
+    })
+      .populate("reviewer", "name")
+      .sort({ createdAt: -1 });
+
+    res.json(reviews);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
 module.exports = router;

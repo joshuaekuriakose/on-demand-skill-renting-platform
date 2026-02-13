@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../auth_service.dart';
+import '../../dashboard/main_dashboard.dart';
+
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,7 +16,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  String _role = "seeker";
   bool _isLoading = false;
   String? _error;
 
@@ -29,7 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailController.text.trim(),
       _phoneController.text.trim(),
       _passwordController.text.trim(),
-      _role,
+      
     );
 
     if (!mounted) return;
@@ -48,7 +49,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       const SnackBar(content: Text("Registration successful")),
     );
 
-    Navigator.pop(context); // go back to login
+    Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(
+    builder: (_) => const MainDashboard(),
+  ),
+);
+
   }
 
   @override
@@ -81,24 +88,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 obscureText: true,
                 decoration: const InputDecoration(labelText: "Password"),
               ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _role,
-                items: const [
-                  DropdownMenuItem(
-                    value: "seeker",
-                    child: Text("Seeker"),
-                  ),
-                  DropdownMenuItem(
-                    value: "provider",
-                    child: Text("Provider"),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() => _role = value!);
-                },
-                decoration: const InputDecoration(labelText: "Role"),
-              ),
               const SizedBox(height: 20),
               if (_error != null)
                 Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -106,8 +95,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ElevatedButton(
                 onPressed: _isLoading ? null : _register,
                 child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text("Register"),
+    ? const SizedBox(
+        height: 22,
+        width: 22,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      )
+    : const Text("Register"),
+
               ),
             ],
           ),

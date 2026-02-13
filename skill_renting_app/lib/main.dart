@@ -63,7 +63,7 @@ class SkillRentingApp extends StatelessWidget {
 ),
 
 
-  home: LoginScreen(),
+  home: const AppEntry(),
 
 routes: {
   "/login": (context) => LoginScreen(),

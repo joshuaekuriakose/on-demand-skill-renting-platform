@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
-import '../../../core/services/auth_storage.dart';
-import '../../auth/screens/login_screen.dart';
 import '../../skills/screens/skill_list_screen.dart';
 import 'package:skill_renting_app/features/bookings/screens/seeker_bookings_screen.dart';
+import 'package:skill_renting_app/core/services/api_service.dart';
+import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 
 
-class SeekerDashboard extends StatelessWidget {
+class SeekerDashboard extends StatefulWidget {
   const SeekerDashboard({super.key});
+
+  @override
+  State<SeekerDashboard> createState() => _SeekerDashboardState();
+
+}
+ class _SeekerDashboardState extends State<SeekerDashboard> {
+
+
 
   Future<void> _logout(BuildContext context) async {
     await AuthStorage.clear();
@@ -19,6 +28,8 @@ class SeekerDashboard extends StatelessWidget {
       (_) => false,
     );
   }
+
+  
 
   @override
   Widget build(BuildContext context) {
@@ -179,3 +190,4 @@ class _DashboardCard extends StatelessWidget {
     );
   }
 }
+

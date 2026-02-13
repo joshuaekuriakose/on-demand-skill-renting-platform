@@ -3,6 +3,7 @@ import '../services/auth_storage.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/bookings/screens/seeker_dashboard.dart';
 import '../../features/bookings/screens/provider_dashboard.dart';
+import '../../features/dashboard/main_dashboard.dart'; 
 
 class AppEntry extends StatelessWidget {
   const AppEntry({super.key});
@@ -23,17 +24,13 @@ class AppEntry extends StatelessWidget {
   }
 
   Future<Widget> _decideStart() async {
-    final token = await AuthStorage.getToken();
-    final role = await AuthStorage.getRole();
+  final token = await AuthStorage.getToken();
 
-    if (token == null || role == null) {
-      return const LoginScreen();
-    }
-
-    if (role == "provider") {
-      return const ProviderDashboard();
-    } else {
-      return const SeekerDashboard();
-    }
+  if (token == null) {
+    return const LoginScreen();
   }
+
+  // Everyone goes to MainDashboard regardless of role
+  return const MainDashboard();
+}
 }

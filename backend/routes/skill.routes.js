@@ -19,9 +19,6 @@ router.get("/", async (req, res) => {
 // Create skill (provider only)
 router.post("/", protect, async (req, res) => {
   try {
-    if (req.user.role !== "provider" && req.user.role !== "both") {
-      return res.status(403).json({ message: "Only providers can add skills" });
-    }
 
     const skill = await Skill.create({
       provider: req.user._id,
@@ -47,6 +44,7 @@ router.get("/my", protect, async (req, res) => {
 // Update skill (provider only)
 router.put("/:id", protect, async (req, res) => {
   try {
+
     const skill = await Skill.findById(req.params.id);
 
     if (!skill) {
@@ -71,6 +69,7 @@ router.put("/:id", protect, async (req, res) => {
 // Delete skill (provider only)
 router.delete("/:id", protect, async (req, res) => {
   try {
+
     const skill = await Skill.findById(req.params.id);
 
     if (!skill) {
@@ -88,6 +87,7 @@ router.delete("/:id", protect, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 
 module.exports = router;

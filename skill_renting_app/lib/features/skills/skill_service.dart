@@ -61,4 +61,21 @@ static Future<bool> deleteSkill(String id) async {
   return response["statusCode"] == 200;
 }
 
+static Future<List<SkillModel>> searchSkills(String query) async {
+  // Get all skills
+  final allSkills = await fetchSkills();
+  
+  // If no query, return all
+  if (query.isEmpty) return allSkills;
+  
+  // Filter locally
+  final lowerQuery = query.toLowerCase();
+  return allSkills.where((skill) {
+    return skill.title.toLowerCase().contains(lowerQuery) ||
+           skill.category.toLowerCase().contains(lowerQuery) ||
+           skill.description.toLowerCase().contains(lowerQuery);
+  }).toList();
+}
+
+
 }
