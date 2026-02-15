@@ -1,5 +1,6 @@
 import '../../core/services/api_service.dart';
 import 'models/user_model.dart';
+import 'package:skill_renting_app/core/services/auth_storage.dart';
 
 class AuthService {
   static Future<UserModel?> login(
@@ -45,5 +46,26 @@ class AuthService {
 
   return null;
 }
+
+static Future<bool> changePassword(
+  String currentPassword,
+  String newPassword,
+) async {
+  final token = await AuthStorage.getToken();
+
+  if (token == null) return false;
+
+  final response = await ApiService.put(
+    "/auth/change-password",
+    {
+      "currentPassword": currentPassword,
+      "newPassword": newPassword,
+    },
+    token: token,
+  );
+
+  return response["statusCode"] == 200;
+}
+
 
 }

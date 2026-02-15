@@ -16,6 +16,8 @@ const skillRoutes = require("./routes/skill.routes");
 const bookingRoutes = require("./routes/booking.routes");
 const reviewRoutes = require("./routes/review.routes");
 const userRoutes = require("./routes/user.routes");
+app.use("/api/notifications", require("./routes/notification.routes"));
+
 
 
 app.use("/api/auth", authRoutes);

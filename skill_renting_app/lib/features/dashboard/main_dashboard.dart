@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
-
 import '../skills/screens/skill_list_screen.dart';
 import '../bookings/screens/seeker_bookings_screen.dart';
 import '../bookings/screens/provider_bookings_screen.dart';
 import '../skills/screens/my_skills_screen.dart';
+import '../profile/screens/profile_screen.dart';
+import '../notifications/screens/notification_screen.dart';
 
 class MainDashboard extends StatelessWidget {
   const MainDashboard({super.key});
@@ -91,6 +92,32 @@ class MainDashboard extends StatelessWidget {
                 );
               },
             ),
+            DashboardIcon(
+  icon: Icons.person,
+  label: "Profile",
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ProfileScreen(),
+      ),
+    );
+  },
+),
+DashboardIcon(
+  icon: Icons.notifications,
+  label: "Alerts",
+  onTap: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const NotificationScreen(),
+      ),
+    );
+  },
+),
+
+
           ],
         ),
       ),

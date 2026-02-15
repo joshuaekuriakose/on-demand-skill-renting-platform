@@ -3,6 +3,8 @@ const router = express.Router();
 const { protect } = require("../middleware/auth.middleware");
 const Booking = require("../models/Booking");
 const Skill = require("../models/Skill");
+const Notification = require("../models/Notification");
+
 
 // Create booking (seeker only, no self-booking)
 router.post("/", protect, async (req, res) => {
@@ -38,6 +40,14 @@ router.post("/", protect, async (req, res) => {
         unit: skill.pricing.unit,
       },
     });
+
+    await Notification.create({
+  user: skill.provider,
+  title: "New Booking Request",
+  message: "Someone requested your skill: " + skill.title,
+});
+
+
     res.status(201).json(booking);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -93,6 +103,13 @@ router.post("/", protect, async (req, res) => {
       
       booking.status = "accepted";
       await booking.save();
+
+      await Notification.create({
+  user: booking.seeker,
+  title: "Booking Accepted",
+  message: "Your booking was accepted",
+});
+
       
       res.json(booking);
     } catch (error) {
@@ -118,6 +135,12 @@ router.post("/", protect, async (req, res) => {
       }
       booking.status = "rejected";
       await booking.save();
+      await Notification.create({
+  user: booking.seeker,
+  title: "Booking Rejected",
+  message: "Your booking was rejected",
+});
+
       res.json(booking);
     } catch (error) {
       res.status(500).json({ message: error.message });
