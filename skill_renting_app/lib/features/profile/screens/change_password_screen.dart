@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../auth/auth_service.dart';
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -110,7 +111,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             ElevatedButton(
               onPressed: _loading ? null : _changePassword,
               child: _loading
-                  ? const CircularProgressIndicator()
+  ? const SkeletonList()
                   : const Text("Update Password"),
             ),
           ],

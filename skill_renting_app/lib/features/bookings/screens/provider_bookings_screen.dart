@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import '../models/booking_model.dart';
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 
 class ProviderBookingsScreen extends StatefulWidget {
   const ProviderBookingsScreen({super.key});
@@ -54,7 +55,7 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen> {
     onRefresh: _loadBookings,
 
     child: _loading
-        ? const Center(child: CircularProgressIndicator())
+  ? const SkeletonList()
 
         : _bookings.isEmpty
             ? const Center(child: Text("No bookings yet"))

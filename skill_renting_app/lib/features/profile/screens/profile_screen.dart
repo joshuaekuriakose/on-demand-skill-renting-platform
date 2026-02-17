@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../profile_service.dart';
 import 'change_password_screen.dart';
-
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -58,7 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
 
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+  ? const SkeletonList()
           : Padding(
               padding: const EdgeInsets.all(16),
 

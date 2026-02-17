@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../auth_service.dart';
 import '../../dashboard/main_dashboard.dart';
-
+import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -52,7 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     Navigator.pushReplacement(
   context,
   MaterialPageRoute(
-    builder: (_) => const MainDashboard(),
+    builder: (_) => const LoginScreen(),
   ),
 );
 

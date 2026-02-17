@@ -3,6 +3,10 @@ import 'package:skill_renting_app/features/reviews/screens/review_screen.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import 'package:skill_renting_app/features/bookings/models/booking_model.dart';
+import 'package:skill_renting_app/features/common/widgets/empty_state.dart';
+import 'package:skill_renting_app/features/skills/screens/skill_list_screen.dart';
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
+
 
 class SeekerBookingsScreen extends StatefulWidget {
   const SeekerBookingsScreen({super.key});
@@ -40,9 +44,22 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
         title: const Text("My Bookings"),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+  ? const SkeletonList()
           : _bookings.isEmpty
-              ? const Center(child: Text("No bookings yet"))
+  ? EmptyState(
+      icon: Icons.calendar_today,
+      title: "No Bookings",
+      message: "You haven’t booked any skills yet.",
+      buttonText: "Browse Skills",
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const SkillListScreen(),
+          ),
+        );
+      },
+    )
               : ListView.builder(
     padding: const EdgeInsets.all(12),
 

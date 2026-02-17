@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 
@@ -127,7 +127,7 @@ class _AddSkillScreenState extends State<AddSkillScreen> {
             const SizedBox(height: 24),
 
             _loading
-                ? const CircularProgressIndicator()
+  ? const SkeletonList()
                 : ElevatedButton(
                     onPressed: _submit,
                     child: const Text("Add Skill"),

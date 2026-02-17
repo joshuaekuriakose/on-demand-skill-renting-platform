@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:skill_renting_app/features/skills/skill_service.dart';
 import 'package:skill_renting_app/features/skills/screens/add_skill_screen.dart';
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 
 class MySkillsScreen extends StatefulWidget {
   const MySkillsScreen({super.key});
@@ -52,7 +53,7 @@ class _MySkillsScreenState extends State<MySkillsScreen> {
   ],
 ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+  ? const SkeletonList()
           : _skills.isEmpty
               ? const Center(child: Text("No skills added yet"))
               : ListView.builder(

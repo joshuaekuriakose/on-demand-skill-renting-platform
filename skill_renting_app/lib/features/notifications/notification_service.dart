@@ -30,4 +30,21 @@ class NotificationService {
       token: token,
     );
   }
+
+  static Future<int> fetchUnreadCount() async {
+  final token = await AuthStorage.getToken();
+  if (token == null) return 0;
+
+  final response = await ApiService.get(
+    "/notifications/unread-count",
+    token: token,
+  );
+
+  if (response["statusCode"] == 200) {
+    return response["data"]["count"];
+  }
+
+  return 0;
+}
+
 }

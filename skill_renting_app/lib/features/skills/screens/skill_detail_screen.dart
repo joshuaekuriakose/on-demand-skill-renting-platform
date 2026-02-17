@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import '../models/skill_model.dart';
 import '../../bookings/booking_service.dart';
 import 'package:skill_renting_app/features/reviews/review_service.dart';
@@ -20,7 +20,7 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
 
   // Reviews State
   List _reviews = [];
-  bool _loadingReviews = true;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -35,7 +35,7 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
 
     setState(() {
       _reviews = data;
-      _loadingReviews = false;
+      _loading = false;
     });
   }
 
@@ -119,10 +119,8 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
 
             const SizedBox(height: 8),
 
-            _loadingReviews
-                ? const Center(
-                    child: CircularProgressIndicator(),
-                  )
+            _loading
+  ? const SkeletonList()
 
                 : _reviews.isEmpty
                     ? const Text("No reviews yet")

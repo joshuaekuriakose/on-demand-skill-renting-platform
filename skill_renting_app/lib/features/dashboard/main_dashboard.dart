@@ -8,9 +8,32 @@ import '../bookings/screens/provider_bookings_screen.dart';
 import '../skills/screens/my_skills_screen.dart';
 import '../profile/screens/profile_screen.dart';
 import '../notifications/screens/notification_screen.dart';
+import '../notifications/notification_service.dart';
 
-class MainDashboard extends StatelessWidget {
+class MainDashboard extends StatefulWidget {
   const MainDashboard({super.key});
+
+  @override
+  State<MainDashboard> createState() => _MainDashboardState();
+}
+class _MainDashboardState extends State<MainDashboard> {
+  int _unreadCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCount();
+  }
+
+  Future<void> _loadCount() async {
+    final count = await NotificationService.fetchUnreadCount();
+    if (!mounted) return;
+
+    setState(() {
+      _unreadCount = count;
+    });
+  }
+
 
   Future<void> _logout(BuildContext context) async {
     await AuthStorage.clear();
@@ -107,15 +130,20 @@ class MainDashboard extends StatelessWidget {
 DashboardIcon(
   icon: Icons.notifications,
   label: "Alerts",
-  onTap: () {
-    Navigator.push(
+  badgeCount: _unreadCount, // 👈 connects badge
+  onTap: () async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const NotificationScreen(),
       ),
     );
+
+    _loadCount(); // refresh after returning
   },
 ),
+
+
 
 
           ],
@@ -129,12 +157,14 @@ class DashboardIcon extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final int? badgeCount; 
 
   const DashboardIcon({
     super.key,
     required this.icon,
     required this.label,
     required this.onTap,
+    this.badgeCount,
   });
 
   @override
@@ -142,34 +172,80 @@ class DashboardIcon extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
+
       child: Card(
         elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 28,
-                color: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+
+        child: Stack(
+          children: [
+
+            // Main icon + text
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+
+                    Icon(
+                      icon,
+                      size: 28,
+                      color: Theme.of(context).primaryColor,
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+
+            // Badge
+            if (badgeCount != null && badgeCount! > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+
+                  child: Text(
+                    badgeCount! > 9 ? "9+" : "$badgeCount",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 }
+

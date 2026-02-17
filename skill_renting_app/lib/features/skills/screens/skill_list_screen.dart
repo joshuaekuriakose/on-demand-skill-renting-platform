@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../skill_service.dart';
 import '../models/skill_model.dart';
 import 'skill_detail_screen.dart';
-
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 
 class SkillListScreen extends StatefulWidget {
   const SkillListScreen({super.key});
@@ -60,7 +60,7 @@ Future<void> _searchSkills(String value) async {
     future: _skills,
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
-        return const Center(child: CircularProgressIndicator());
+        return const SkeletonList();
       }
 
       if (!snapshot.hasData || snapshot.data!.isEmpty) {

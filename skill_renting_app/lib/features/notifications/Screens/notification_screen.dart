@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../notification_service.dart';
+import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -40,7 +41,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       ),
 
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+  ? const SkeletonList()
 
           : _items.isEmpty
               ? const Center(child: Text("No notifications"))
