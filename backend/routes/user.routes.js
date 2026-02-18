@@ -41,6 +41,27 @@ router.put("/me", protect, async (req, res) => {
   }
 });
 
+//FCM token
+router.post("/save-token", protect, async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    await User.findByIdAndUpdate(req.user._id, {
+      fcmToken: token,
+    });
+
+    res.json({ message: "Token saved" });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+
+router.put("/become-provider", protect, async (req, res) => {
+  return res.status(400).json({
+    message: "This feature is no longer available",
+  });
+});
 
 // Become Provider (upgrade to both)
 /*router.put("/become-provider", protect, async (req, res) => {
@@ -77,10 +98,5 @@ router.put("/me", protect, async (req, res) => {
     });
   }
 });*/
-router.put("/become-provider", protect, async (req, res) => {
-  return res.status(400).json({
-    message: "This feature is no longer available",
-  });
-});
 
 module.exports = router;

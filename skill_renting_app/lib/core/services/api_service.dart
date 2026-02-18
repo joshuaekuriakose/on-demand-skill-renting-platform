@@ -30,7 +30,7 @@ class ApiService {
   final response = await http.get(
     Uri.parse("${ApiConstants.baseUrl}$endpoint"),
     headers: {
-      "Content-Type": "application/json", // 👈 ADD THIS
+      "Content-Type": "application/json",
       if (token != null) "Authorization": "Bearer $token",
     },
   );

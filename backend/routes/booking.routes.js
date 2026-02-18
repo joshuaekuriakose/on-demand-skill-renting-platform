@@ -4,7 +4,8 @@ const { protect } = require("../middleware/auth.middleware");
 const Booking = require("../models/Booking");
 const Skill = require("../models/Skill");
 const Notification = require("../models/Notification");
-
+const sendPush = require("../utils/sendPush");
+const User = require("../models/User");
 
 // Create booking (seeker only, no self-booking)
 router.post("/", protect, async (req, res) => {
@@ -41,11 +42,24 @@ router.post("/", protect, async (req, res) => {
       },
     });
 
+    // In-app notification
     await Notification.create({
   user: skill.provider,
   title: "New Booking Request",
   message: "Someone requested your skill: " + skill.title,
 });
+
+//  Push Notification
+const provider = await User.findById(skill.provider);
+
+await sendPush(
+  provider.fcmToken,
+  "New Booking",
+  "Someone booked your skill",
+  {
+    bookingId: booking._id.toString(),
+  }
+);
 
 
     res.status(201).json(booking);
@@ -104,13 +118,24 @@ router.post("/", protect, async (req, res) => {
       booking.status = "accepted";
       await booking.save();
 
+      // in-app notification
       await Notification.create({
   user: booking.seeker,
   title: "Booking Accepted",
   message: "Your booking was accepted",
 });
 
-      
+// Push Noti
+const seeker = await User.findById(booking.seeker);
+
+if (seeker && seeker.fcmToken) {
+  await sendPushNotification(
+    seeker.fcmToken,
+    "Booking Accepted",
+    "Your booking was accepted"
+  );
+}
+
       res.json(booking);
     } catch (error) {
       res.status(500).json({ message: error.message });
@@ -135,11 +160,24 @@ router.post("/", protect, async (req, res) => {
       }
       booking.status = "rejected";
       await booking.save();
+
+      //in-app noti
       await Notification.create({
   user: booking.seeker,
   title: "Booking Rejected",
   message: "Your booking was rejected",
 });
+
+//push noti
+const seeker = await User.findById(booking.seeker);
+
+if (seeker && seeker.fcmToken) {
+  await sendPushNotification(
+    seeker.fcmToken,
+    "Booking Rejected",
+    "Your booking was rejected"
+  );
+}
 
       res.json(booking);
     } catch (error) {
@@ -169,6 +207,24 @@ router.post("/", protect, async (req, res) => {
    
       booking.status = "completed";   
       await booking.save();
+
+      //in-app noti
+      await Notification.create({
+  user: booking.seeker,
+  title: "Booking Completed",
+  message: "Your booking was completed",
+});
+
+//push noti
+      const seeker = await User.findById(booking.seeker);
+
+if (seeker && seeker.fcmToken) {
+  await sendPushNotification(
+    seeker.fcmToken,
+    "Booking Completed",
+    "Your booking was completed"
+  );
+}
    
       res.json(booking); 
     } catch (error) {   

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "551563733",
+    "project_id": "skill-renting-app",
+    "storage_bucket": "skill-renting-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:551563733:android:85d60bdeb5945832d68d5c",
+        "android_client_info": {
+          "package_name": "com.joshua.skill_renting_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbNzxuKpHh_rKDuUxwC3-BD8kxV4SJRYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

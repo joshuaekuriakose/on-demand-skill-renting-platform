@@ -8,6 +8,7 @@ build/
 # Node.js
 backend/node_modules/
 backend/.env
+backend/config/firebase-key.json
 
 # Logs
 *.log

@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'core/utils/app_entry.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import 'package:skill_renting_app/features/auth/screens/register_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
-
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const SkillRentingApp());
 }
 

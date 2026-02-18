@@ -5,8 +5,8 @@ import '../../../core/services/auth_storage.dart';
 //import '../../bookings/screens/seeker_dashboard.dart';
 //import '../../bookings/screens/provider_dashboard.dart';
 import 'package:skill_renting_app/features/dashboard/main_dashboard.dart';
-
-
+import 'package:skill_renting_app/core/services/api_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -53,7 +53,17 @@ Navigator.pushReplacement(
   ),
 );
 
+final fcmToken = await FirebaseMessaging.instance.getToken();
 
+if (fcmToken != null) {
+  await ApiService.post(
+    "/users/save-token",
+    {
+      "token": fcmToken,
+    },
+    token: user.token,
+  );
+}
 
   }
 
