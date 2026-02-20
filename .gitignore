@@ -4,6 +4,7 @@ build/
 .packages
 .pub/
 .pub-cache/
+android/app/google-services.json
 
 # Node.js
 backend/node_modules/

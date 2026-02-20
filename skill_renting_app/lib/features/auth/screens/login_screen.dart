@@ -42,8 +42,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    await AuthStorage.saveAuthData(user.token, user.role);
-
 if (!mounted) return;
 
 Navigator.pushReplacement(

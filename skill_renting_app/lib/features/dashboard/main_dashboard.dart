@@ -21,10 +21,25 @@ class MainDashboard extends StatefulWidget {
 
 class _MainDashboardState extends State<MainDashboard> {
 
-  @override
+  String _getGreeting() {
+  final hour = DateTime.now().hour;
+
+  if (hour < 12) {
+    return "Good Morning";
+  } else if (hour < 17) {
+    return "Good Afternoon";
+  } else {
+    return "Good Evening";
+  }
+}
+
+String _userName = "";
+
+@override
 void initState() {
   super.initState();
   _loadCount();
+  _loadUserName();
 }
 
   int _unreadCount = 0;
@@ -40,6 +55,15 @@ void initState() {
       (_) => false,
     );
   }
+
+Future<void> _loadUserName() async {
+  final name = await AuthStorage.getName();
+  if (name != null) {
+    setState(() {
+      _userName = name;
+    });
+  }
+}
 
   Future<void> _loadCount() async {
   try {
@@ -168,49 +192,59 @@ void initState() {
   // ================= HERO ===================
 
   Widget _buildHeroSection(BuildContext context) {
-    return Container(
-      width: double.infinity,
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
 
-      padding: const EdgeInsets.all(20),
-
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-
-        gradient: LinearGradient(
-          colors: [
-            Theme.of(context).primaryColor,
-            Colors.indigo.shade300,
-          ],
-        ),
-      ),
-
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-
-        children: const [
-
-          Text(
-            "Hi 👋",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          SizedBox(height: 6),
-
-          Text(
-            "Find trusted professionals\nor earn by sharing your skills",
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
-            ),
-          ),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          Theme.of(context).primaryColor,
+          Colors.indigo.shade400,
         ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
       ),
-    );
-  }
+      borderRadius: BorderRadius.circular(20),
+    ),
+
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        Text(
+          "${_getGreeting()} 👋",
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        Text(
+          _userName.isNotEmpty ? _userName : "",
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        const Text(
+          "Find skilled professionals or share your expertise.",
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   // ================= FEATURED ===================
 
@@ -482,6 +516,7 @@ class _DashboardIcon extends StatelessWidget {
   final VoidCallback onTap;
 
   const _DashboardIcon({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
@@ -490,20 +525,22 @@ class _DashboardIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
-
+      borderRadius: BorderRadius.circular(16),
       onTap: onTap,
-
-      child: Card(
-        elevation: 2,
-
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
-
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-
           children: [
 
             Icon(
@@ -512,7 +549,7 @@ class _DashboardIcon extends StatelessWidget {
               color: Theme.of(context).primaryColor,
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
 
             Text(
               label,

@@ -70,82 +70,126 @@ Future<void> _searchSkills(String value) async {
       final skills = snapshot.data!;
 
       return ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: skills.length,
-        itemBuilder: (context, index) {
-          final skill = skills[index];
+  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+  itemCount: skills.length,
+  itemBuilder: (context, index) {
+    final skill = skills[index];
 
-          return Card(
-            elevation: 3,
-            margin: const EdgeInsets.symmetric(vertical: 6),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        SkillDetailScreen(skill: skill),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: Colors.white,
+        elevation: 2,
+        borderRadius: BorderRadius.circular(16),
+
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SkillDetailScreen(skill: skill),
+              ),
+            );
+          },
+
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+
+              // Top Image / Banner
+              Container(
+                height: 140,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
                   ),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(12),
+                  color: Colors.indigo.shade50,
+                ),
+
+                child: const Center(
+                  child: Icon(
+                    Icons.work_outline,
+                    size: 48,
+                    color: Colors.indigo,
+                  ),
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.all(14),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+
+                    // Title
                     Text(
                       skill.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 4),
+
+                    // Category
                     Text(
                       skill.category,
-                      style: const TextStyle(color: Colors.grey),
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                      ),
                     ),
+
                     const SizedBox(height: 10),
+
                     Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+
+                        // Price Badge
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
-                            vertical: 4,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
                             color: Colors.indigo.shade50,
-                            borderRadius:
-                                BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(20),
                           ),
+
                           child: Text(
                             "₹${skill.price}/${skill.pricingUnit}",
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.indigo,
+                              fontSize: 13,
                             ),
                           ),
                         ),
+
+                        // Rating
                         Row(
                           children: [
+
                             const Icon(
                               Icons.star,
                               color: Colors.amber,
                               size: 18,
                             ),
-                            const SizedBox(width: 2),
+
+                            const SizedBox(width: 3),
+
                             Text(
-                              skill.rating
-                                  .toStringAsFixed(1),
+                              skill.rating.toStringAsFixed(1),
                               style: const TextStyle(
-                                fontWeight:
-                                    FontWeight.w600,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -155,10 +199,13 @@ Future<void> _searchSkills(String value) async {
                   ],
                 ),
               ),
-            ),
-          );
-        },
-      );
+            ],
+          ),
+        ),
+      ),
+    );
+  },
+);
     },
   ),
 ),
