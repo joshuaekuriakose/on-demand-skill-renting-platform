@@ -61,19 +61,54 @@ static Future<bool> deleteSkill(String id) async {
   return response["statusCode"] == 200;
 }
 
-static Future<List<SkillModel>> searchSkills(String query) async {
-  // Get all skills
+static Future<List<SkillModel>> searchSkills({
+  String? query,
+  String? category,
+  double? minPrice,
+  double? maxPrice,
+  double? minRating,
+}) async {
+
   final allSkills = await fetchSkills();
-  
-  // If no query, return all
-  if (query.isEmpty) return allSkills;
-  
-  // Filter locally
-  final lowerQuery = query.toLowerCase();
+
   return allSkills.where((skill) {
-    return skill.title.toLowerCase().contains(lowerQuery) ||
-           skill.category.toLowerCase().contains(lowerQuery) ||
-           skill.description.toLowerCase().contains(lowerQuery);
+
+    // 🔎 Text Search
+    if (query != null && query.isNotEmpty) {
+      final lowerQuery = query.toLowerCase();
+      final matchesText =
+          skill.title.toLowerCase().contains(lowerQuery) ||
+          skill.category.toLowerCase().contains(lowerQuery) ||
+          skill.description.toLowerCase().contains(lowerQuery);
+
+      if (!matchesText) return false;
+    }
+
+    // 📂 Category Filter
+    if (category != null && category.isNotEmpty) {
+  final Map<String, List<String>> categoryMap = {
+    "Plumbing": ["Plumbing", "Plumber", "Pipe Repair", "Water Works"],
+    "Electrical": ["Electrical", "Electrician", "Wiring", "Power Repair"],
+    "Appliance Repair": ["Appliance Repair", "Fridge Repair", "AC Repair"],
+    "Cleaning": ["Cleaning", "House Cleaning", "Office Cleaning"],
+  };
+
+  final allowed = categoryMap[category] ?? [category];
+
+  if (!allowed.contains(skill.category)) {
+    return false;
+  }
+}
+
+    // 💰 Price Filter
+    if (minPrice != null && skill.price < minPrice) return false;
+    if (maxPrice != null && skill.price > maxPrice) return false;
+
+    // ⭐ Rating Filter
+    if (minRating != null && skill.rating < minRating) return false;
+
+    return true;
+
   }).toList();
 }
 

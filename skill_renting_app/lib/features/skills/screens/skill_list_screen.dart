@@ -12,6 +12,13 @@ class SkillListScreen extends StatefulWidget {
 }
 
 class _SkillListScreenState extends State<SkillListScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  // Filters
+String _searchText = "";
+String? _selectedCategory;
+double? _minPrice;
+double? _maxPrice;
+double? _minRating;
   late Future<List<SkillModel>> _skills;
 
   @override
@@ -19,17 +26,177 @@ class _SkillListScreenState extends State<SkillListScreen> {
     super.initState();
     _skills = SkillService.fetchSkills();
   }
-Future<void> _searchSkills(String value) async {
-  if (value.isEmpty) {
-    _skills = SkillService.fetchSkills();
-  } else {
-    _skills = SkillService.searchSkills(value);
-  }
 
-  setState(() {});
+  final Map<String, List<String>> categoryMap = {
+  "Plumbing": [
+    "Plumbing",
+    "Plumber",
+    "Pipe Repair",
+    "Water Works",
+  ],
+
+  "Electrical": [
+    "Electrical",
+    "Electrician",
+    "Wiring",
+    "Power Repair",
+  ],
+
+  "Appliance Repair": [
+    "Appliance Repair",
+    "Washing Machine Repair",
+    "Fridge Repair",
+    "AC Repair",
+  ],
+
+  "Cleaning": [
+    "Cleaning",
+    "House Cleaning",
+    "Office Cleaning",
+    "Sanitation",
+  ],
+};
+
+void _searchSkills() {
+  setState(() {
+    _skills = SkillService.searchSkills(
+      query: _searchText,
+      category: _selectedCategory,
+      minPrice: _minPrice,
+      maxPrice: _maxPrice,
+      minRating: _minRating,
+    );
+  });
 }
 
+void _openFilterSheet() {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
 
+            const Text(
+              "Filter Skills",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Category
+            DropdownButtonFormField<String>(
+              value: _selectedCategory,
+              decoration: const InputDecoration(
+                labelText: "Category",
+              ),
+              items: const [
+                DropdownMenuItem(value: "Plumbing", child: Text("Plumbing")),
+                DropdownMenuItem(value: "Electrical", child: Text("Electrical")),
+                DropdownMenuItem(value: "Appliance Repair", child: Text("Appliance Repair")),
+                DropdownMenuItem(value: "Cleaning", child: Text("Cleaning")),
+              ],
+              onChanged: (value) {
+                _selectedCategory = value;
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            // Min Price
+            TextField(
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Min Price",
+              ),
+              onChanged: (v) {
+                _minPrice = double.tryParse(v);
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            // Max Price
+            TextField(
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Max Price",
+              ),
+              onChanged: (v) {
+                _maxPrice = double.tryParse(v);
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            // Rating
+            DropdownButtonFormField<double>(
+              value: _minRating,
+              decoration: const InputDecoration(
+                labelText: "Minimum Rating",
+              ),
+              items: const [
+                DropdownMenuItem(value: 1, child: Text("1+")),
+                DropdownMenuItem(value: 2, child: Text("2+")),
+                DropdownMenuItem(value: 3, child: Text("3+")),
+                DropdownMenuItem(value: 4, child: Text("4+")),
+              ],
+              onChanged: (value) {
+                _minRating = value;
+              },
+            ),
+
+            const SizedBox(height: 20),
+
+            Row(
+  children: [
+
+    // Clear Filters
+    Expanded(
+      child: OutlinedButton(
+        onPressed: () {
+          setState(() {
+            _selectedCategory = null;
+            _minPrice = null;
+            _maxPrice = null;
+            _minRating = null;
+            _searchText = "";
+            _searchController.clear();
+            _skills = SkillService.fetchSkills();
+          });
+
+          Navigator.pop(context);
+        },
+        child: const Text("Clear"),
+      ),
+    ),
+
+    const SizedBox(width: 12),
+
+    // Apply Filters
+    Expanded(
+      child: ElevatedButton(
+        onPressed: () {
+          Navigator.pop(context);
+          _searchSkills();
+        },
+        child: const Text("Apply"),
+      ),
+    ),
+  ],
+),
+          ],
+        ),
+      );
+    },
+  );
+}
 
 
   @override
@@ -43,16 +210,26 @@ Future<void> _searchSkills(String value) async {
     Padding(
       padding: const EdgeInsets.all(10),
       child: TextField(
-        decoration: const InputDecoration(
-          hintText: "Search skills...",
-          prefixIcon: Icon(Icons.search),
-          border: OutlineInputBorder(),
-        ),
-        onChanged: (value) {
-          _searchSkills(value);
-        },
-      ),
+  controller: _searchController,
+  decoration: const InputDecoration(
+    hintText: "Search skills...",
+    prefixIcon: Icon(Icons.search),
+  ),
+  onChanged: (value) {
+    _searchText = value;
+    _searchSkills();
+  },
+),
     ),
+
+    Align(
+  alignment: Alignment.centerRight,
+  child: TextButton.icon(
+    icon: const Icon(Icons.filter_list),
+    label: const Text("Filters"),
+    onPressed: _openFilterSheet,
+  ),
+),
 
     // Skill List
     Expanded(
