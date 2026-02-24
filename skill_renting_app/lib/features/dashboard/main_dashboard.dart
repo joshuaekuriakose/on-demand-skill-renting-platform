@@ -7,9 +7,9 @@ import '../bookings/screens/provider_bookings_screen.dart';
 import '../skills/screens/my_skills_screen.dart';
 import '../profile/screens/profile_screen.dart';
 import '../notifications/screens/notification_screen.dart';
-import '../notifications/notification_service.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+//import '../notifications/notification_service.dart';
+//import 'package:firebase_core/firebase_core.dart';
+//import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
 
 class MainDashboard extends StatefulWidget {
@@ -67,7 +67,8 @@ Future<void> _loadUserName() async {
 
   Future<void> _loadCount() async {
   try {
-    final response = await ApiService.get("/notifications/unread-count");
+    final token = await AuthStorage.getToken();
+final response = await ApiService.get("/notifications/unread-count", token: token);
 
     if (response["statusCode"] == 200) {
       setState(() {

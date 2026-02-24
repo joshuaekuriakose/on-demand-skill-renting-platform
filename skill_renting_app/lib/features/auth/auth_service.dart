@@ -5,35 +5,31 @@ import 'package:skill_renting_app/core/services/auth_storage.dart';
 class AuthService {
 
   // ================= LOGIN =================
-  static Future<UserModel?> login(
-    String email,
-    String password,
-  ) async {
+ static Future<UserModel?> login(
+  String email,
+  String password,
+) async {
+  final response = await ApiService.post(
+    "/auth/login",
+    {
+      "email": email,
+      "password": password,
+    },
+  );
 
-    final response = await ApiService.post(
-      "/auth/login",
-      {
-        "email": email,
-        "password": password,
-      },
+  if (response["statusCode"] == 200) {
+    final data = response["data"];
+
+    await AuthStorage.saveAuthData(
+      data["token"],
+      data["name"],
     );
 
-    if (response["statusCode"] == 200) {
-
-      // ✅ FIX: Correct variable name
-      final data = response["data"];
-
-      // ✅ Save token + name
-      await AuthStorage.saveAuthData(
-        data["token"],
-        data["name"],
-      );
-
-      return UserModel.fromJson(data);
-    }
-
-    return null;
+    return UserModel.fromJson(data);
   }
+
+  return null;
+}
 
 
   // ================= REGISTER =================

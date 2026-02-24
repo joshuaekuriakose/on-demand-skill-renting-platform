@@ -104,8 +104,8 @@ print("📥 Review Response: ${response["data"]}");
             const SizedBox(height: 20),
 
             _loading
-  ? const SkeletonList()
-                : ElevatedButton(
+  ? const Center(child: CircularProgressIndicator())
+  : ElevatedButton(
                     onPressed: _submitReview,
                     child: const Text("Submit Review"),
                   ),

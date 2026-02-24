@@ -6,6 +6,7 @@ class BookingModel {
   final String providerName;
   final String skillId;
   final bool isReviewed;
+  final DateTime createdAt;
 
   BookingModel({
     required this.id,
@@ -15,6 +16,7 @@ class BookingModel {
     required this.providerName,
     required this.skillId,
     required this.isReviewed,
+    required this.createdAt,
   });
 
   factory BookingModel.fromJson(Map<String, dynamic> json) {
@@ -23,34 +25,35 @@ class BookingModel {
     final seeker = json["seeker"];
     final provider = json["provider"];
 
-    return BookingModel(
-      // ID
-      id: json["_id"] ?? "",
+  return BookingModel(
+    id: json["_id"] ?? "",
+    status: json["status"] ?? "unknown",
 
-      // Status
-      status: json["status"] ?? "unknown",
+    skillId: skill is Map
+        ? skill["_id"] ?? ""
+        : "",
 
-      // Skill
-      skillId: skill is Map
-          ? skill["_id"] ?? ""
-          : "",
+    skillTitle: skill is Map
+        ? skill["title"] ?? "Unknown Skill"
+        : "Unknown Skill",
 
-      skillTitle: skill is Map
-          ? skill["title"] ?? "Unknown Skill"
-          : "Unknown Skill",
+    seekerName: seeker is Map
+        ? seeker["name"] ?? "Unknown"
+        : "Unknown",
 
-      // Seeker
-      seekerName: seeker is Map
-          ? seeker["name"] ?? "Unknown"
-          : "Unknown",
+    providerName: provider is Map
+        ? provider["name"] ?? "Unknown"
+        : "Unknown",
 
-      // Provider
-      providerName: provider is Map
-          ? provider["name"] ?? "Unknown"
-          : "Unknown",
+    isReviewed: json["isReviewed"] == true,
 
-      // Review
-      isReviewed: json["isReviewed"] == true,
-    );
+   
+    createdAt: DateTime.parse(json["createdAt"]),
+
+  );
   }
+  String get createdAtFormatted {
+  return "${createdAt.day}/${createdAt.month}/${createdAt.year} "
+         "${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}";
+}
 }

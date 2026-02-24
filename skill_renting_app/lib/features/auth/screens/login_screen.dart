@@ -19,51 +19,59 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
-  String? _error;
 
   Future<void> _login() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  if (_isLoading) return;
 
+  FocusScope.of(context).unfocus();
+
+  setState(() => _isLoading = true);
+
+  try {
     final user = await AuthService.login(
       _emailController.text.trim(),
       _passwordController.text.trim(),
     );
 
-    if (!mounted) return;
-
     if (user == null) {
-      setState(() {
-        _error = "Invalid email or password";
-        _isLoading = false;
-      });
+      _showError("Invalid email or password");
       return;
     }
 
-if (!mounted) return;
+    // Save FCM token
+    final fcmToken = await FirebaseMessaging.instance.getToken();
 
-Navigator.pushReplacement(
-  context,
-  MaterialPageRoute(
-    builder: (_) => const MainDashboard(),
-  ),
-);
+    if (fcmToken != null) {
+      final token = await AuthStorage.getToken();
 
-final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await ApiService.post(
+          "/users/save-token",
+          {
+            "token": fcmToken,
+          },
+          token: token,
+        );
+      }
+    }
 
-if (fcmToken != null) {
-  await ApiService.post(
-    "/users/save-token",
-    {
-      "token": fcmToken,
-    },
-    token: user.token,
-  );
-}
+    if (!mounted) return;
 
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MainDashboard(),
+      ),
+    );
+
+  } catch (e) {
+    _showError("Login failed. Try again.");
+  } finally {
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -129,14 +137,6 @@ if (fcmToken != null) {
 
             const SizedBox(height: 24),
 
-            if (_error != null)
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.red),
-              ),
-
-            if (_error != null) const SizedBox(height: 10),
-
             ElevatedButton(
               onPressed: _isLoading ? null : _login,
               child: _isLoading
@@ -161,4 +161,12 @@ if (fcmToken != null) {
 
     );
   }
+  void _showError(String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      backgroundColor: Colors.red,
+    ),
+  );
+}
 }

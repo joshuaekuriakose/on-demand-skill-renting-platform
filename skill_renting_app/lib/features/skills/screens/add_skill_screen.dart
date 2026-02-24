@@ -111,7 +111,7 @@ class _AddSkillScreenState extends State<AddSkillScreen> {
               items: const [
                 DropdownMenuItem(value: "hour", child: Text("Per Hour")),
                 DropdownMenuItem(value: "day", child: Text("Per Day")),
-                DropdownMenuItem(value: "job", child: Text("Per Job")),
+                DropdownMenuItem(value: "task", child: Text("Per task")),
               ],
               onChanged: (v) => setState(() => _unit = v!),
             ),
@@ -127,8 +127,8 @@ class _AddSkillScreenState extends State<AddSkillScreen> {
             const SizedBox(height: 24),
 
             _loading
-  ? const SkeletonList()
-                : ElevatedButton(
+  ? const Center(child: CircularProgressIndicator())
+  : ElevatedButton(
                     onPressed: _submit,
                     child: const Text("Add Skill"),
                   ),

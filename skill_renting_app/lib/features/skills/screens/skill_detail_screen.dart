@@ -86,21 +86,28 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
 
               child: ElevatedButton(
                 onPressed: () async {
-                  final success =
-                      await BookingService.createBooking(skill.id);
+  try {
+    await BookingService.createBooking(skill.id);
 
-                  if (!context.mounted) return;
+    if (!context.mounted) return;
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        success
-                            ? "Booking created successfully"
-                            : "Booking failed",
-                      ),
-                    ),
-                  );
-                },
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Booking requested successfully"),
+      ),
+    );
+
+  } catch (e) {
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString().replaceAll("Exception: ", "")),
+      ),
+    );
+  }
+},
 
                 child: const Text("Book Skill"),
               ),

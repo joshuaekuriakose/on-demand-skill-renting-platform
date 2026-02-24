@@ -129,15 +129,32 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen> {
 
               // Seeker
               Row(
-                children: [
-                  const Icon(Icons.person, size: 16, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    b.seekerName,
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                ],
-              ),
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    const Icon(Icons.person, size: 16, color: Colors.grey),
+    const SizedBox(width: 6),
+
+    Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          b.seekerName,
+          style: const TextStyle(color: Colors.grey),
+        ),
+
+        const SizedBox(height: 2),
+
+        Text(
+          b.createdAtFormatted,
+          style: const TextStyle(
+            fontSize: 11,
+            color: Colors.grey,
+          ),
+        ),
+      ],
+    ),
+  ],
+),
 
               const SizedBox(height: 6),
 

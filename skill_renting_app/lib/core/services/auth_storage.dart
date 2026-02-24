@@ -20,11 +20,9 @@ class AuthStorage {
 
   // Get name
   static Future<String?> getName() async {
-    final prefs = await SharedPreferences.getInstance();
-    final name = prefs.getString(_nameKey); //New
-  
-    return prefs.getString(_nameKey);
-  }
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString(_nameKey);
+}
 
   // Clear everything
   static Future<void> clear() async {

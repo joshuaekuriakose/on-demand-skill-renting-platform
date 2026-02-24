@@ -12,15 +12,17 @@ class BookingService {
   }
 
   final response = await ApiService.post(
+    
     "/bookings",
     {
       "skillId": skillId,
     },
     token: token,
   );
-
-  print("Booking status: ${response["statusCode"]}");
-  print("Booking response: ${response["data"]}");
+  if (response["statusCode"] != 201) {
+    final msg = response["data"]?["message"] ?? "Booking failed";
+    throw Exception(msg);
+  }
 
   return response["statusCode"] == 201;
 }

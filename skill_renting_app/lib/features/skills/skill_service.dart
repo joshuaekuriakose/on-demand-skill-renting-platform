@@ -4,15 +4,23 @@ import 'models/skill_model.dart';
 
 class SkillService {
   static Future<List<SkillModel>> fetchSkills() async {
-    final response = await ApiService.get("/skills");
+  final token = await AuthStorage.getToken();
 
-    if (response["statusCode"] == 200) {
-      return (response["data"] as List)
-          .map((json) => SkillModel.fromJson(json))
-          .toList();
-    }
-    return [];
+  if (token == null) return [];
+
+  final response = await ApiService.get(
+    "/skills",
+    token: token,
+  );
+
+  if (response["statusCode"] == 200) {
+    return (response["data"] as List)
+        .map((json) => SkillModel.fromJson(json))
+        .toList();
   }
+
+  return [];
+}
 
   static Future<List<dynamic>> fetchMySkills() async {
     final token = await AuthStorage.getToken();

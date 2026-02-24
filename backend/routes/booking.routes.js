@@ -25,6 +25,19 @@ router.post("/", protect, async (req, res) => {
         .json({ message: "You cannot book your own skill" });
     }
 
+    // Check if seeker already has active booking for this skill
+const existingBooking = await Booking.findOne({
+  seeker: req.user._id,
+  skill: skill._id,
+  status: { $in: ["requested", "accepted", "in_progress"] }
+});
+
+if (existingBooking) {
+  return res.status(400).json({
+    message: "You already have an active booking for this skill"
+  });
+}
+
     // Create booking with price snapshot
     const booking = await Booking.create({
       seeker: req.user._id,
@@ -129,7 +142,7 @@ await sendPush(
 const seeker = await User.findById(booking.seeker);
 
 if (seeker && seeker.fcmToken) {
-  await sendPushNotification(
+  await sendPush(
     seeker.fcmToken,
     "Booking Accepted",
     "Your booking was accepted"
