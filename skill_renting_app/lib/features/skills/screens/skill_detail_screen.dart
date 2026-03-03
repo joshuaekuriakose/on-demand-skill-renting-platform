@@ -3,6 +3,7 @@ import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import '../models/skill_model.dart';
 import '../../bookings/booking_service.dart';
 import 'package:skill_renting_app/features/reviews/review_service.dart';
+import '../../bookings/screens/booking_schedule_screen.dart';
 
 class SkillDetailScreen extends StatefulWidget {
   final SkillModel skill;
@@ -85,30 +86,17 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
               width: double.infinity,
 
               child: ElevatedButton(
-                onPressed: () async {
-  try {
-    await BookingService.createBooking(skill.id);
-
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Booking requested successfully"),
+                onPressed: () {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => BookingScheduleScreen(
+        skillId: skill.id,
+        pricingUnit: skill.pricingUnit,
       ),
-    );
-
-  } catch (e) {
-
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(e.toString().replaceAll("Exception: ", "")),
-      ),
-    );
-  }
+    ),
+  );
 },
-
                 child: const Text("Book Skill"),
               ),
             ),

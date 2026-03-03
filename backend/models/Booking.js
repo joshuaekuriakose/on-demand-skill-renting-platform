@@ -70,6 +70,15 @@ const bookingSchema = new mongoose.Schema(
     isReviewed: {
   type: Boolean,
   default: false
+},
+
+rescheduleRequested: {
+  type: Boolean,
+  default: false
+},
+
+rescheduleReason: {
+  type: String
 }
 
 

@@ -44,9 +44,21 @@ const skillSchema = new mongoose.Schema(
         },
     },
     
-    availability: {
-      type: String,
-    },
+   availability: {
+  workingDays: {
+    type: [String],
+    default: []
+  },
+  startTime: {
+    type: String
+  },
+  endTime: {
+    type: String
+  },
+  slotDuration: {
+    type: Number
+  }
+},
 
     location: {
       type: String,

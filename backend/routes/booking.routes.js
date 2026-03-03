@@ -25,6 +25,27 @@ router.post("/", protect, async (req, res) => {
         .json({ message: "You cannot book your own skill" });
     }
 
+    // Require Schedule
+    if (!startDate || !endDate) {
+  return res.status(400).json({
+    message: "Start and end date are required",
+  });
+}
+
+    // Prevent time overlap (for hourly & daily)
+const overlappingBooking = await Booking.findOne({
+  skill: skill._id,
+  status: { $in: ["requested", "accepted", "in_progress"] },
+  startDate: { $lt: new Date(endDate) },
+  endDate: { $gt: new Date(startDate) },
+});
+
+if (overlappingBooking) {
+  return res.status(400).json({
+    message: "This time slot is already booked",
+  });
+}
+
     // Check if seeker already has active booking for this skill
 const existingBooking = await Booking.findOne({
   seeker: req.user._id,
@@ -39,21 +60,18 @@ if (existingBooking) {
 }
 
     // Create booking with price snapshot
-    const booking = await Booking.create({
-      seeker: req.user._id,
-      provider: skill.provider,
-      skill: skill._id,
-
-       // Default scheduling (for now)
-  startDate: startDate || new Date(),
-  endDate: endDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
-  duration: duration || 1,
-
-      pricingSnapshot: {
-        amount: skill.pricing.amount,
-        unit: skill.pricing.unit,
-      },
-    });
+   const booking = await Booking.create({
+  seeker: req.user._id,
+  provider: skill.provider,
+  skill: skill._id,
+  startDate,
+  endDate,
+  duration,
+  pricingSnapshot: {
+    amount: skill.pricing.amount,
+    unit: skill.pricing.unit,
+  },
+});
 
     // In-app notification
     await Notification.create({
@@ -185,7 +203,7 @@ if (seeker && seeker.fcmToken) {
 const seeker = await User.findById(booking.seeker);
 
 if (seeker && seeker.fcmToken) {
-  await sendPushNotification(
+  await sendPush(
     seeker.fcmToken,
     "Booking Rejected",
     "Your booking was rejected"
@@ -232,7 +250,7 @@ if (seeker && seeker.fcmToken) {
       const seeker = await User.findById(booking.seeker);
 
 if (seeker && seeker.fcmToken) {
-  await sendPushNotification(
+  await sendPush(
     seeker.fcmToken,
     "Booking Completed",
     "Your booking was completed"
@@ -245,5 +263,31 @@ if (seeker && seeker.fcmToken) {
     }
    });
 
+   router.put("/:id/cancel", protect, async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    if (booking.seeker.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    if (!["requested", "accepted"].includes(booking.status)) {
+      return res.status(400).json({
+        message: "Booking cannot be cancelled",
+      });
+    }
+
+    booking.status = "cancelled";
+    await booking.save();
+
+    res.json(booking);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 module.exports = router;

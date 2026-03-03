@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/auth.middleware");
 const Skill = require("../models/Skill");
+const Booking = require("../models/Booking");
+
 
 // Get all skills (public)
 router.get("/", async (req, res) => {
@@ -85,6 +87,95 @@ router.delete("/:id", protect, async (req, res) => {
     res.json({ message: "Skill deleted" });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+//Slots Availability
+router.get("/:id/available-slots", protect, async (req, res) => {
+  try {
+    const skillId = req.params.id;
+    const date = req.query.date;
+
+    const skill = await Skill.findById(skillId);
+    const pricingUnit = skill.pricing.unit;
+
+
+    // ================= DAILY =================
+if (pricingUnit === "day") {
+
+  const today = new Date();
+  const days = [];
+
+  for (let i = 0; i < 30; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() + i);
+
+    const dayName = d.toLocaleDateString("en-US", {
+      weekday: "long",
+    }).toLowerCase();
+
+    if (skill.availability.workingDays
+        .map(w => w.toLowerCase())
+        .includes(dayName)) {
+      days.push(d.toISOString().split("T")[0]);
+    }
+  }
+
+  return res.json({ availableSlots: days });
+}
+
+// ================= HOURLY =================
+if (pricingUnit === "hour") {
+
+  if (!date) {
+    return res.status(400).json({ message: "Date is required" });
+  }
+
+  const selectedDate = new Date(date);
+
+  const dayName = selectedDate.toLocaleDateString("en-US", {
+    weekday: "long",
+  }).toLowerCase();
+
+  if (!skill.availability.workingDays
+      .map(w => w.toLowerCase())
+      .includes(dayName)) {
+    return res.json({ availableSlots: [] });
+  }
+
+  const { startTime, endTime, slotDuration } = skill.availability;
+
+  const [startHour, startMinute] = startTime.split(":").map(Number);
+  const [endHour, endMinute] = endTime.split(":").map(Number);
+
+  let currentSlot = new Date(selectedDate);
+  currentSlot.setHours(startHour, startMinute, 0, 0);
+
+  const endOfDay = new Date(selectedDate);
+  endOfDay.setHours(endHour, endMinute, 0, 0);
+
+  const slots = [];
+
+  while (currentSlot < endOfDay) {
+    slots.push(
+      currentSlot.toTimeString().slice(0, 5)
+    );
+
+    currentSlot = new Date(
+      currentSlot.getTime() + slotDuration * 60000
+    );
+  }
+
+  return res.json({ availableSlots: slots });
+}
+
+// ================= INVALID =================
+return res.status(400).json({
+  message: "Invalid pricing unit",
+});
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 

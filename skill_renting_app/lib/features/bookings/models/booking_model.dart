@@ -7,7 +7,7 @@ class BookingModel {
   final String skillId;
   final bool isReviewed;
   final DateTime createdAt;
-
+  
   BookingModel({
     required this.id,
     required this.status,

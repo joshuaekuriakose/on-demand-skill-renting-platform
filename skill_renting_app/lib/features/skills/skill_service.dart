@@ -120,5 +120,23 @@ static Future<List<SkillModel>> searchSkills({
   }).toList();
 }
 
+static Future<List<dynamic>> fetchAvailableSlots(
+  String skillId,
+  String date,
+) async {
+  final token = await AuthStorage.getToken();
+  if (token == null) return [];
+
+  final response = await ApiService.get(
+    "/skills/$skillId/available-slots?date=$date",
+    token: token,
+  );
+
+  if (response["statusCode"] == 200) {
+    return response["data"]["availableSlots"];
+  }
+
+  return [];
+}
 
 }
