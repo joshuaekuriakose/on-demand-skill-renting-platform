@@ -5,7 +5,7 @@ build/
 .pub/
 .pub-cache/
 android/app/google-services.json
-frontend.zip
+skill_renting_app/frontend.zip
 
 # Node.js
 backend/node_modules/
