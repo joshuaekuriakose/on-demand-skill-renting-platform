@@ -3,7 +3,12 @@ import '../../core/services/auth_storage.dart';
 import 'models/booking_model.dart';
 
 class BookingService {
-  static Future<bool> createBooking(String skillId) async {
+  static Future<bool> createBooking({
+  required String skillId,
+  required DateTime startDate,
+  required DateTime endDate,
+  required int duration,
+}) async {
   final token = await AuthStorage.getToken();
 
   if (token == null) {
@@ -12,26 +17,29 @@ class BookingService {
   }
 
   final response = await ApiService.post(
-    
     "/bookings",
     {
       "skillId": skillId,
+      "startDate": startDate.toIso8601String(),
+      "endDate": endDate.toIso8601String(),
+      "duration": duration,
     },
     token: token,
   );
+
   if (response["statusCode"] != 201) {
     final msg = response["data"]?["message"] ?? "Booking failed";
     throw Exception(msg);
   }
 
-  return response["statusCode"] == 201;
+  return true;
 }
 
 static Future<List<BookingModel>> fetchProviderBookings() async {
   final token = await AuthStorage.getToken();
 
   if (token == null) {
-    print("❌ No token found");
+    print("No token found");
     return [];
   }
 
@@ -39,9 +47,6 @@ static Future<List<BookingModel>> fetchProviderBookings() async {
     "/bookings/provider",
     token: token,
   );
-
-  print("📡 ProviderBookings Status: ${response["statusCode"]}");
-  print("📦 ProviderBookings Data: ${response["data"]}");
 
   if (response["statusCode"] == 200) {
     final list = response["data"] as List;
@@ -61,7 +66,7 @@ static Future<List<BookingModel>> fetchMyBookings() async {
   final token = await AuthStorage.getToken();
 
   if (token == null) {
-    print("❌ No token (seeker)");
+    print(" No token (seeker)");
     return [];
   }
 
@@ -69,9 +74,6 @@ static Future<List<BookingModel>> fetchMyBookings() async {
     "/bookings/my",
     token: token,
   );
-
-  print("📡 MyBookings Status: ${response["statusCode"]}");
-  print("📦 MyBookings Data: ${response["data"]}");
 
   if (response["statusCode"] == 200) {
     final data = response["data"];
@@ -90,20 +92,21 @@ static Future<List<BookingModel>> fetchMyBookings() async {
 
 
 
-static Future<void> updateBookingStatus(
+static Future<bool> updateBookingStatus(
   String bookingId,
   String action,
 ) async {
-
   final token = await AuthStorage.getToken();
 
-  if (token == null) return;
+  if (token == null) return false;
 
-  await ApiService.put(
+  final response = await ApiService.put(
     "/bookings/$bookingId/$action",
     {},
     token: token,
   );
+
+  return response["statusCode"] == 200;
 }
 
 

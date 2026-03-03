@@ -19,6 +19,22 @@ class BookingModel {
     required this.createdAt,
   });
 
+  BookingModel copyWith({
+  String? status,
+  bool? isReviewed,
+}) {
+  return BookingModel(
+    id: id,
+    status: status ?? this.status,
+    skillTitle: skillTitle,
+    seekerName: seekerName,
+    providerName: providerName,
+    skillId: skillId,
+    isReviewed: isReviewed ?? this.isReviewed,
+    createdAt: createdAt,
+  );
+}
+
   factory BookingModel.fromJson(Map<String, dynamic> json) {
 
     final skill = json["skill"];

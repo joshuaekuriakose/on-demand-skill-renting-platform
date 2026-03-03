@@ -35,14 +35,27 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen> {
   }
 
   Future<void> _updateStatus(String id, String action) async {
-    final token = await AuthStorage.getToken();
+  final success =
+      await BookingService.updateBookingStatus(id, action);
 
-    if (token == null) return;
+  if (!success) return;
 
-    await BookingService.updateBookingStatus(id, action);
+  setState(() {
+    final index = _bookings.indexWhere((b) => b.id == id);
 
-    await _loadBookings();
-  }
+    if (index != -1) {
+      final newStatus =
+          action == "accept"
+              ? "accepted"
+              : action == "reject"
+                  ? "rejected"
+                  : "completed";
+
+      _bookings[index] =
+          _bookings[index].copyWith(status: newStatus);
+    }
+  });
+}
 
   @override
   Widget build(BuildContext context) {

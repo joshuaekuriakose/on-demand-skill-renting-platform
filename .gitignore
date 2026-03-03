@@ -5,11 +5,13 @@ build/
 .pub/
 .pub-cache/
 android/app/google-services.json
+frontend.zip
 
 # Node.js
 backend/node_modules/
 backend/.env
 backend/config/firebase-key.json
+backend/backend.zip
 
 # Logs
 *.log

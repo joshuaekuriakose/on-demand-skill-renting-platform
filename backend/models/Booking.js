@@ -79,8 +79,7 @@ rescheduleRequested: {
 
 rescheduleReason: {
   type: String
-}
-
+},
 
   },
   {

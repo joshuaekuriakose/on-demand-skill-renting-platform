@@ -14,6 +14,7 @@ router.post("/", protect, async (req, res) => {
 
     // Fetch skill
     const skill = await Skill.findById(skillId);
+    const unit = skill.pricing.unit;
     if (!skill) {
       return res.status(404).json({ message: "Skill not found" });
     }
@@ -32,32 +33,28 @@ router.post("/", protect, async (req, res) => {
   });
 }
 
-    // Prevent time overlap (for hourly & daily)
-const overlappingBooking = await Booking.findOne({
-  skill: skill._id,
-  status: { $in: ["requested", "accepted", "in_progress"] },
-  startDate: { $lt: new Date(endDate) },
-  endDate: { $gt: new Date(startDate) },
-});
+// Normalize dates
+    const newStart = new Date(startDate);
+    const newEnd = new Date(endDate);
+    
+    if (unit === "daily"){
+    newStart.setHours(0, 0, 0, 0);    
+    newEnd.setHours(23, 59, 59, 999);
+    }
 
-if (overlappingBooking) {
-  return res.status(400).json({
-    message: "This time slot is already booked",
-  });
-}
+    // Overlap check
+    const overlappingBooking = await Booking.findOne({
+      skill: skill._id,
+      status: { $in: ["requested", "accepted", "in_progress"] },
+      startDate: { $lt: newEnd },
+      endDate: { $gt: newStart },
+    });
 
-    // Check if seeker already has active booking for this skill
-const existingBooking = await Booking.findOne({
-  seeker: req.user._id,
-  skill: skill._id,
-  status: { $in: ["requested", "accepted", "in_progress"] }
-});
-
-if (existingBooking) {
-  return res.status(400).json({
-    message: "You already have an active booking for this skill"
-  });
-}
+    if (overlappingBooking) {
+      return res.status(400).json({
+        message: "This date is already booked",
+      });
+    }
 
     // Create booking with price snapshot
    const booking = await Booking.create({

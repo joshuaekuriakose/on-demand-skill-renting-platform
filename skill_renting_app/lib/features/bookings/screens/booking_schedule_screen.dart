@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../skills/skill_service.dart';
+import '../booking_service.dart';
 
 class BookingScheduleScreen extends StatefulWidget {
   final String skillId;
@@ -152,13 +153,50 @@ class _BookingScheduleScreenState
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: () async {
+              try {
+                if (widget.pricingUnit == "hour") {
+                  final start = DateTime.parse(
+                    "${DateFormat('yyyy-MM-dd').format(selectedDate!)} $selectedSlot",
+                  );
+
+                  final end = start.add(const Duration(minutes: 60));
+
+                  await BookingService.createBooking(
+                    skillId: widget.skillId,
+                    startDate: start,
+                    endDate: end,
+                    duration: 1,
+                  );
+                } else {
+                  final start = DateTime.parse(selectedSlot);
+                  final end = start.add(const Duration(days: 1));
+
+                  await BookingService.createBooking(
+                    skillId: widget.skillId,
+                    startDate: start,
+                    endDate: end,
+                    duration: 1,
+                  );
+                }
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Booking Requested")),
+                );
+
+                Navigator.pop(context);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString())),
+                );
+              }
+            },
             child: const Text("Confirm Booking"),
           ),
         ),
     ],
   ),
-),
+),  
     );
   }
 }
