@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:skill_renting_app/features/skills/skill_service.dart';
 import 'package:skill_renting_app/features/skills/screens/add_skill_screen.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
+import 'package:skill_renting_app/features/bookings/screens/provider_calendar_screen.dart';
 
 class MySkillsScreen extends StatefulWidget {
   const MySkillsScreen({super.key});
@@ -66,7 +67,25 @@ class _MySkillsScreenState extends State<MySkillsScreen> {
                       child: ListTile(
                         title: Text(s["title"]),
                         subtitle: Text(s["category"]),
-                        trailing: PopupMenuButton(
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.calendar_today),
+                              tooltip: "Manage Calendar",
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ProviderCalendarScreen(
+                                      skillId: s["_id"],
+                                      pricingUnit: s["pricing"]["unit"],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            PopupMenuButton(
   itemBuilder: (context) => [
 
     const PopupMenuItem(
@@ -110,7 +129,8 @@ class _MySkillsScreenState extends State<MySkillsScreen> {
     }
   },
 ),
-
+                          ],
+                        ),
                       ),
                     );
                   },

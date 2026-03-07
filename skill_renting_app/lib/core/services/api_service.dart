@@ -3,6 +3,36 @@ import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
 
 class ApiService {
+  static dynamic _tryDecodeBody(String body) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      return jsonDecode(trimmed);
+    } catch (_) {
+      return body;
+    }
+  }
+
+  static Map<String, dynamic> _wrapResponse(http.Response response) {
+    final decoded = _tryDecodeBody(response.body);
+
+    dynamic data = decoded;
+    String? message;
+
+    if (decoded is Map) {
+      if (decoded.containsKey("data")) data = decoded["data"];
+      if (decoded.containsKey("message") && decoded["message"] != null) {
+        message = decoded["message"].toString();
+      }
+    }
+
+    return {
+      "statusCode": response.statusCode,
+      "data": data,
+      "message": message,
+    };
+  }
+
   static Future<Map<String, dynamic>> post(
   String endpoint,
   Map<String, dynamic> body, {
@@ -17,12 +47,7 @@ class ApiService {
     body: jsonEncode(body),
   );
 
-  final decoded = jsonDecode(response.body);
-
-  return {
-    "statusCode": response.statusCode,
-    "data": decoded, // ALWAYS here
-  };
+  return _wrapResponse(response);
 }
 
   static Future<Map<String, dynamic>> get(
@@ -37,29 +62,7 @@ class ApiService {
     },
   );
 
-  final decoded = jsonDecode(response.body);
-
-  // If backend returns LIST directly
-  if (decoded is List) {
-    return {
-      "statusCode": response.statusCode,
-      "data": decoded,
-    };
-  }
-
-  // If backend returns MAP { data: ... }
-  if (decoded is Map && decoded.containsKey("data")) {
-    return {
-      "statusCode": response.statusCode,
-      "data": decoded["data"],
-    };
-  }
-
-  // Error fallback
-  return {
-    "statusCode": response.statusCode,
-    "data": decoded,
-  };
+  return _wrapResponse(response);
 }
 
 static Future<Map<String, dynamic>> put(
@@ -77,16 +80,7 @@ static Future<Map<String, dynamic>> put(
     body: jsonEncode(body),
   );
 
-  final decoded = jsonDecode(response.body);
-
-  print("RAW RESPONSE: ${response.body}");
-print("DECODED: $decoded");
-
-  return {
-    "statusCode": response.statusCode,
-    "data": decoded["data"],
-    "message": decoded["message"],
-  };
+  return _wrapResponse(response);
 }
 
 static Future<Map<String, dynamic>> delete(
@@ -96,20 +90,12 @@ static Future<Map<String, dynamic>> delete(
   final response = await http.delete(
     Uri.parse("${ApiConstants.baseUrl}$endpoint"),
     headers: {
+      "Content-Type": "application/json",
       if (token != null) "Authorization": "Bearer $token",
     },
   );
 
-   final decoded = jsonDecode(response.body);
-
-   print("RAW RESPONSE: ${response.body}");
-print("DECODED: $decoded");
-
-  return {
-    "statusCode": response.statusCode,
-    "data": decoded["data"],
-    "message": decoded["message"],
-  };
+  return _wrapResponse(response);
 }
 
 }

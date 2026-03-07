@@ -33,6 +33,37 @@ const bookingSchema = new mongoose.Schema(
       type: String,
     },
 
+    jobAddress: {
+      houseName: { type: String },
+      locality: { type: String },
+      pincode: { type: String },
+      district: { type: String },
+    },
+
+    // ── GPS Location ──────────────────────────────────────────────────────────
+    jobGpsLocation: {
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+
+    // pending  → seeker hasn't responded yet
+    // provided → seeker shared GPS (or auto-filled from saved home)
+    // skipped  → seeker chose to skip
+    gpsLocationStatus: {
+      type: String,
+      enum: ["pending", "provided", "skipped"],
+      default: "pending",
+    },
+    // ─────────────────────────────────────────────────────────────────────────
+
+    jobDescription: {
+      type: String,
+    },
+
+    distanceKmEstimate: {
+      type: Number,
+    },
+
     pricingSnapshot: {
       amount: {
         type: Number,
@@ -66,21 +97,20 @@ const bookingSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    
+
     isReviewed: {
-  type: Boolean,
-  default: false
-},
+      type: Boolean,
+      default: false,
+    },
 
-rescheduleRequested: {
-  type: Boolean,
-  default: false
-},
+    rescheduleRequested: {
+      type: Boolean,
+      default: false,
+    },
 
-rescheduleReason: {
-  type: String
-},
-
+    rescheduleReason: {
+      type: String,
+    },
   },
   {
     timestamps: true,

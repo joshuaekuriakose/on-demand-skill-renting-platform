@@ -17,6 +17,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _houseController = TextEditingController();
+  final _localityController = TextEditingController();
+  final _pinController = TextEditingController();
+  final _districtController = TextEditingController();
 
   bool _isLoading = false;
   String? _error;
@@ -32,7 +36,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailController.text.trim(),
       _phoneController.text.trim(),
       _passwordController.text.trim(),
-      
+      address: {
+        "houseName": _houseController.text.trim(),
+        "locality": _localityController.text.trim(),
+        "pincode": _pinController.text.trim(),
+        "district": _districtController.text.trim(),
+      },
     );
 
     if (!mounted) return;
@@ -102,6 +111,31 @@ if (fcmToken != null) {
                 controller: _passwordController,
                 obscureText: true,
                 decoration: const InputDecoration(labelText: "Password"),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _houseController,
+                decoration:
+                    const InputDecoration(labelText: "House name"),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _localityController,
+                decoration:
+                    const InputDecoration(labelText: "Locality"),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _pinController,
+                keyboardType: TextInputType.number,
+                decoration:
+                    const InputDecoration(labelText: "PIN code"),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _districtController,
+                decoration:
+                    const InputDecoration(labelText: "District"),
               ),
               const SizedBox(height: 20),
               if (_error != null)

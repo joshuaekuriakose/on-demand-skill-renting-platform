@@ -157,9 +157,12 @@ if (pricingUnit === "hour") {
   const slots = [];
 
   while (currentSlot < endOfDay) {
-    slots.push(
-      currentSlot.toTimeString().slice(0, 5)
-    );
+    const isLunch =
+      currentSlot.getHours() === 12 && currentSlot.getMinutes() === 30;
+
+    if (!isLunch) {
+      slots.push(currentSlot.toTimeString().slice(0, 5));
+    }
 
     currentSlot = new Date(
       currentSlot.getTime() + slotDuration * 60000

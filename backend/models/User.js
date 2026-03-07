@@ -26,25 +26,34 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    
-      fcmToken: {
+
+    fcmToken: {
       type: String,
     },
 
     role: {
-  type: String,
-  enum: ["user", "admin"],
-  default: "user"
-},
-
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
 
     profileImage: {
       type: String,
     },
 
     address: {
-      type: String,
+      houseName: { type: String },
+      locality: { type: String },
+      pincode: { type: String, index: true },
+      district: { type: String },
     },
+
+    // ── Saved home GPS (auto-filled on next accepted booking) ─────────────────
+    homeGpsLocation: {
+      lat: { type: Number },
+      lng: { type: Number },
+    },
+    // ─────────────────────────────────────────────────────────────────────────
 
     rating: {
       type: Number,
@@ -65,8 +74,6 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-
-  
   },
   {
     timestamps: true,

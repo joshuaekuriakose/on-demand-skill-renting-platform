@@ -1,290 +1,40 @@
 const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/auth.middleware");
-const Booking = require("../models/Booking");
-const Skill = require("../models/Skill");
-const Notification = require("../models/Notification");
-const sendPush = require("../utils/sendPush");
-const User = require("../models/User");
 
-// Create booking (seeker only, no self-booking)
-router.post("/", protect, async (req, res) => {
-  try {
-    const { skillId, startDate, endDate, duration } = req.body;
+const {
+  createBooking,
+  getOccupiedSlots,
+  getMyBookings,
+  getProviderBookings,
+  acceptBooking,
+  rejectBooking,
+  completeBooking,
+  cancelBooking,
+  getOccupiedRange,
+  toggleBlockedSlot,
+  submitJobGps,   // NEW
+  skipJobGps,     // NEW
+} = require("../controllers/booking.controller");
 
-    // Fetch skill
-    const skill = await Skill.findById(skillId);
-    const unit = skill.pricing.unit;
-    if (!skill) {
-      return res.status(404).json({ message: "Skill not found" });
-    }
+router.post("/", protect, createBooking);
+router.get("/occupied/:skillId", protect, getOccupiedSlots);
+router.get("/my", protect, getMyBookings);
+router.get("/provider", protect, getProviderBookings);
+router.put("/:id/accept", protect, acceptBooking);
+router.put("/:id/reject", protect, rejectBooking);
+router.put("/:id/complete", protect, completeBooking);
+router.put("/:id/cancel", protect, cancelBooking);
+router.get("/occupied-range/:skillId", protect, getOccupiedRange);
+router.post("/blocks/toggle", protect, toggleBlockedSlot);
 
-    // 🚫 Block self-booking
-    if (skill.provider.toString() === req.user._id.toString()) {
-      return res
-        .status(400)
-        .json({ message: "You cannot book your own skill" });
-    }
+// ── GPS routes ─────────────────────────────────────────────────────────────
+// Seeker submits GPS location for accepted booking
+// Body: { lat: number, lng: number, saveAsHome: boolean }
+router.put("/:id/gps", protect, submitJobGps);
 
-    // Require Schedule
-    if (!startDate || !endDate) {
-  return res.status(400).json({
-    message: "Start and end date are required",
-  });
-}
-
-// Normalize dates
-    const newStart = new Date(startDate);
-    const newEnd = new Date(endDate);
-    
-    if (unit === "daily"){
-    newStart.setHours(0, 0, 0, 0);    
-    newEnd.setHours(23, 59, 59, 999);
-    }
-
-    // Overlap check
-    const overlappingBooking = await Booking.findOne({
-      skill: skill._id,
-      status: { $in: ["requested", "accepted", "in_progress"] },
-      startDate: { $lt: newEnd },
-      endDate: { $gt: newStart },
-    });
-
-    if (overlappingBooking) {
-      return res.status(400).json({
-        message: "This date is already booked",
-      });
-    }
-
-    // Create booking with price snapshot
-   const booking = await Booking.create({
-  seeker: req.user._id,
-  provider: skill.provider,
-  skill: skill._id,
-  startDate,
-  endDate,
-  duration,
-  pricingSnapshot: {
-    amount: skill.pricing.amount,
-    unit: skill.pricing.unit,
-  },
-});
-
-    // In-app notification
-    await Notification.create({
-  user: skill.provider,
-  title: "New Booking Request",
-  message: "Someone requested your skill: " + skill.title,
-});
-
-//  Push Notification
-const provider = await User.findById(skill.provider);
-
-await sendPush(
-  provider.fcmToken,
-  "New Booking",
-  "Someone booked your skill",
-  {
-    bookingId: booking._id.toString(),
-  }
-);
-
-
-    res.status(201).json(booking);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-    // Get bookings for logged-in seeker  
-   router.get("/my", protect, async (req, res) => {
-    try {         
-      const bookings = await Booking.find({ seeker: req.user._id })          
-      .populate("skill")
-      .populate("provider", "name email");    
-     
-      res.status(200).json(bookings);    
-    } catch (error) {         
-      res.status(500).json({ message: error.message });     
-    }  
-   });
-
-   // Get bookings for logged-in provider
-   router.get("/provider", protect, async (req, res) => {  
-    try {    
-      const bookings = await Booking.find({ provider: req.user._id })     
-      .populate("skill")
-      .populate("seeker", "name email");
-    
-      res.status(200).json(bookings);  
-    } catch (error) {    
-      res.status(500).json({ message: error.message });  
-    }
-   });
-
-
-    //Accept booking (provider only)
-    router.put("/:id/accept", protect, async (req, res) => {
-      try {
-        const booking = await Booking.findById(req.params.id);
-        
-        if (!booking) {
-          return res.status(404).json({ message: "Booking not found" });
-        }
-
-        // Only provider can accept
-       if (booking.provider.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-
-      if (booking.status !== "requested") {
-        return res
-        .status(400)
-        .json({ message: "Booking cannot be accepted" });
-      }
-      
-      booking.status = "accepted";
-      await booking.save();
-
-      // in-app notification
-      await Notification.create({
-  user: booking.seeker,
-  title: "Booking Accepted",
-  message: "Your booking was accepted",
-});
-
-// Push Noti
-const seeker = await User.findById(booking.seeker);
-
-if (seeker && seeker.fcmToken) {
-  await sendPush(
-    seeker.fcmToken,
-    "Booking Accepted",
-    "Your booking was accepted"
-  );
-}
-
-      res.json(booking);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-   });
-
-   // Reject booking (provider only)
-   router.put("/:id/reject", protect, async (req, res) => {
-    try {
-      const booking = await Booking.findById(req.params.id);
-      
-      if (!booking) {
-        return res.status(404).json({ message: "Booking not found" });
-      }
-      if (booking.provider.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      if (booking.status !== "requested") {
-        return res
-        .status(400)
-        .json({ message: "Booking cannot be rejected" });
-      }
-      booking.status = "rejected";
-      await booking.save();
-
-      //in-app noti
-      await Notification.create({
-  user: booking.seeker,
-  title: "Booking Rejected",
-  message: "Your booking was rejected",
-});
-
-//push noti
-const seeker = await User.findById(booking.seeker);
-
-if (seeker && seeker.fcmToken) {
-  await sendPush(
-    seeker.fcmToken,
-    "Booking Rejected",
-    "Your booking was rejected"
-  );
-}
-
-      res.json(booking);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-   });
-  
-   // Complete booking (provider only)
-
-   router.put("/:id/complete", protect, async (req, res) => {  
-    try {    
-      const booking = await Booking.findById(req.params.id);
-    
-      if (!booking) {     
-        return res.status(404).json({ message: "Booking not found" });   
-      }
-    
-      if (booking.provider.toString() !== req.user._id.toString()) {      
-        return res.status(403).json({ message: "Not authorized" });   
-      }
-    
-      if (booking.status !== "accepted") {     
-        return res      
-        .status(400)
-        .json({ message: "Only accepted bookings can be completed" });   
-      }
-   
-      booking.status = "completed";   
-      await booking.save();
-
-      //in-app noti
-      await Notification.create({
-  user: booking.seeker,
-  title: "Booking Completed",
-  message: "Your booking was completed",
-});
-
-//push noti
-      const seeker = await User.findById(booking.seeker);
-
-if (seeker && seeker.fcmToken) {
-  await sendPush(
-    seeker.fcmToken,
-    "Booking Completed",
-    "Your booking was completed"
-  );
-}
-   
-      res.json(booking); 
-    } catch (error) {   
-      res.status(500).json({ message: error.message }); 
-    }
-   });
-
-   router.put("/:id/cancel", protect, async (req, res) => {
-  try {
-    const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    if (booking.seeker.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (!["requested", "accepted"].includes(booking.status)) {
-      return res.status(400).json({
-        message: "Booking cannot be cancelled",
-      });
-    }
-
-    booking.status = "cancelled";
-    await booking.save();
-
-    res.json(booking);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+// Seeker opts to skip GPS sharing
+router.put("/:id/skip-gps", protect, skipJobGps);
+// ──────────────────────────────────────────────────────────────────────────
 
 module.exports = router;

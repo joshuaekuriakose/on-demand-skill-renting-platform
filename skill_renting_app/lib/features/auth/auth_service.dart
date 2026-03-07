@@ -37,8 +37,9 @@ class AuthService {
     String name,
     String email,
     String phone,
-    String password,
-  ) async {
+    String password, {
+    required Map<String, String> address,
+  }) async {
 
     final response = await ApiService.post(
       "/auth/register",
@@ -47,6 +48,7 @@ class AuthService {
         "email": email,
         "phone": phone,
         "password": password,
+        "address": address,
       },
     );
 

@@ -13,23 +13,30 @@ class ProfileService {
   );
 
   if (response["statusCode"] == 200) {
-    return ProfileModel.fromJson(response["data"]);
+      return ProfileModel.fromJson(response["data"]);
   }
 
   return null;
 }
 
-  static Future<bool> updateProfile(String name, String phone) async {
+  static Future<bool> updateProfile(
+    String name,
+    String phone, {
+    Map<String, String>? address,
+  }) async {
     final token = await AuthStorage.getToken();
 
     if (token == null) return false;
 
+    final body = {
+      "name": name,
+      "phone": phone,
+      if (address != null) "address": address,
+    };
+
     final response = await ApiService.put(
       "/users/me",
-      {
-        "name": name,
-        "phone": phone,
-      },
+      body,
       token: token,
     );
 

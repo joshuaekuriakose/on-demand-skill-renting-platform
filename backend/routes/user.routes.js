@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/auth.middleware");
 const User = require("../models/User");
+const { validateAndEnrichAddress } = require("../utils/pincode");
 
 // Get my profile
 router.get("/me", protect, async (req, res) => {
@@ -17,7 +18,7 @@ router.get("/me", protect, async (req, res) => {
 // Update profile
 router.put("/me", protect, async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, address } = req.body;
 
     const user = await User.findById(req.user._id);
 
@@ -27,6 +28,13 @@ router.put("/me", protect, async (req, res) => {
 
     if (name) user.name = name;
     if (phone) user.phone = phone;
+    if (address) {
+      const validated = await validateAndEnrichAddress(address);
+      if (!validated.ok) {
+        return res.status(400).json({ message: validated.message });
+      }
+      user.address = validated.address;
+    }
 
     await user.save();
 
@@ -35,6 +43,7 @@ router.put("/me", protect, async (req, res) => {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      address: user.address,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

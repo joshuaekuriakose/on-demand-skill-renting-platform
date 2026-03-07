@@ -5,11 +5,21 @@ const generateToken = require("../utils/generateToken");
 exports.registerUser = async (req, res) => {
   try {
 
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, address } = req.body;
+    const { validateAndEnrichAddress } = require("../utils/pincode");
 
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: "User already exists" });
+    }
+
+    let enrichedAddress;
+    if (address) {
+      const validated = await validateAndEnrichAddress(address);
+      if (!validated.ok) {
+        return res.status(400).json({ message: validated.message });
+      }
+      enrichedAddress = validated.address;
     }
 
     const user = await User.create({
@@ -17,7 +27,8 @@ exports.registerUser = async (req, res) => {
       email,
       phone,
       password,
-      role : "user"
+      role: "user",
+      address: enrichedAddress,
     });
 
     res.status(201).json({

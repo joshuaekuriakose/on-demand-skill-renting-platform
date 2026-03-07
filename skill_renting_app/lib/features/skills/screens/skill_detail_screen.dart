@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import '../models/skill_model.dart';
-import '../../bookings/booking_service.dart';
 import 'package:skill_renting_app/features/reviews/review_service.dart';
 import '../../bookings/screens/booking_schedule_screen.dart';
+import 'package:skill_renting_app/features/profile/profile_service.dart';
+import 'package:skill_renting_app/features/profile/models/profile_model.dart';
+import 'package:skill_renting_app/features/profile/screens/profile_screen.dart';
 
 class SkillDetailScreen extends StatefulWidget {
   final SkillModel skill;
@@ -38,6 +40,58 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
       _reviews = data;
       _loading = false;
     });
+  }
+
+  bool _isProfileComplete(ProfileModel profile) {
+    final addr = profile.address;
+    final house = addr?["houseName"]?.toString().trim() ?? "";
+    final locality = addr?["locality"]?.toString().trim() ?? "";
+    final pin = addr?["pincode"]?.toString().trim() ?? "";
+    final district = addr?["district"]?.toString().trim() ?? "";
+
+    return profile.name.trim().isNotEmpty &&
+        profile.phone.trim().isNotEmpty &&
+        house.isNotEmpty &&
+        locality.isNotEmpty &&
+        pin.isNotEmpty &&
+        district.isNotEmpty;
+  }
+
+  Future<bool> _ensureProfileComplete() async {
+    final profile = await ProfileService.getProfile();
+    if (!mounted) return false;
+
+    if (profile == null || !_isProfileComplete(profile)) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Complete your profile"),
+          content: const Text(
+            "Please add your address details in Profile before booking.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Go to Profile"),
+            ),
+          ],
+        ),
+      );
+
+      if (go == true && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileScreen()),
+        );
+      }
+      return false;
+    }
+
+    return true;
   }
 
   @override
@@ -86,17 +140,20 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
               width: double.infinity,
 
               child: ElevatedButton(
-                onPressed: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => BookingScheduleScreen(
-        skillId: skill.id,
-        pricingUnit: skill.pricingUnit,
-      ),
-    ),
-  );
-},
+                onPressed: () async {
+                  final ok = await _ensureProfileComplete();
+                  if (!ok || !context.mounted) return;
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookingScheduleScreen(
+                        skillId: skill.id,
+                        pricingUnit: skill.pricingUnit,
+                      ),
+                    ),
+                  );
+                },
                 child: const Text("Book Skill"),
               ),
             ),

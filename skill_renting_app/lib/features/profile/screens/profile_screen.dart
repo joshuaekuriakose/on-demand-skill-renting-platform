@@ -48,6 +48,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       TextEditingController(text: _profile?.name ?? "");
   final phoneController =
       TextEditingController(text: _profile?.phone ?? "");
+  final houseController = TextEditingController(
+    text: _profile?.address?["houseName"]?.toString() ?? "",
+  );
+  final localityController = TextEditingController(
+    text: _profile?.address?["locality"]?.toString() ?? "",
+  );
+  final pinController = TextEditingController(
+    text: _profile?.address?["pincode"]?.toString() ?? "",
+  );
+  final districtController = TextEditingController(
+    text: _profile?.address?["district"]?.toString() ?? "",
+  );
 
   await showDialog(
     context: context,
@@ -55,9 +67,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return AlertDialog(
         title: const Text("Edit Profile"),
 
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
 
             // Name
             TextField(
@@ -77,7 +90,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 labelText: "Phone",
               ),
             ),
-          ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: houseController,
+              decoration: const InputDecoration(
+                labelText: "House name",
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: localityController,
+              decoration: const InputDecoration(
+                labelText: "Locality",
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: pinController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "PIN code",
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: districtController,
+              decoration: const InputDecoration(
+                labelText: "District",
+              ),
+            ),
+            ],
+          ),
         ),
 
         actions: [
@@ -91,10 +134,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text("Save"),
 
             onPressed: () async {
-              final success =
-                  await ProfileService.updateProfile(
+              final success = await ProfileService.updateProfile(
                 nameController.text.trim(),
                 phoneController.text.trim(),
+                address: {
+                  "houseName": houseController.text.trim(),
+                  "locality": localityController.text.trim(),
+                  "pincode": pinController.text.trim(),
+                  "district": districtController.text.trim(),
+                },
               );
 
               if (success) {
