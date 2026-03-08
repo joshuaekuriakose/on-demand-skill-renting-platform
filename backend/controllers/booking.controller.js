@@ -9,51 +9,35 @@ const {
   estimateDistanceKmByPins,
 } = require("../utils/pincode");
 
+// ── Utility ────────────────────────────────────────────────────────────────────
+function generateOtp() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// ── Create Booking ─────────────────────────────────────────────────────────────
 exports.createBooking = async (req, res) => {
   try {
-    const {
-      skillId,
-      startDate,
-      endDate,
-      duration,
-      jobAddress,
-      jobDescription,
-    } = req.body;
+    const { skillId, startDate, endDate, duration, jobAddress, jobDescription } = req.body;
 
     const skill = await Skill.findById(skillId);
-    if (!skill) {
-      return res.status(404).json({ message: "Skill not found" });
-    }
+    if (!skill) return res.status(404).json({ message: "Skill not found" });
 
     const unit = skill?.pricing?.unit;
-    if (!unit) {
-      return res.status(400).json({ message: "Skill pricing unit is missing" });
-    }
+    if (!unit) return res.status(400).json({ message: "Skill pricing unit is missing" });
 
-    if (skill.provider.toString() === req.user._id.toString()) {
-      return res
-        .status(400)
-        .json({ message: "You cannot book your own skill" });
-    }
+    if (skill.provider.toString() === req.user._id.toString())
+      return res.status(400).json({ message: "You cannot book your own skill" });
 
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        message: "Start and end date are required",
-      });
-    }
+    if (!startDate || !endDate)
+      return res.status(400).json({ message: "Start and end date are required" });
 
-    if (!jobDescription || !jobDescription.trim()) {
-      return res.status(400).json({
-        message: "Description is required",
-      });
-    }
+    if (!jobDescription || !jobDescription.trim())
+      return res.status(400).json({ message: "Description is required" });
 
     const newStart = new Date(startDate);
     const newEnd = new Date(endDate);
-
-    if (isNaN(newStart.getTime()) || isNaN(newEnd.getTime())) {
+    if (isNaN(newStart.getTime()) || isNaN(newEnd.getTime()))
       return res.status(400).json({ message: "Invalid date format" });
-    }
 
     let normalizedStart = newStart;
     let normalizedEnd = newEnd;
@@ -61,16 +45,12 @@ exports.createBooking = async (req, res) => {
     if (unit === "day" || unit === "daily") {
       normalizedStart = new Date(newStart);
       normalizedStart.setHours(0, 0, 0, 0);
-
       normalizedEnd = new Date(newEnd);
       normalizedEnd.setHours(0, 0, 0, 0);
     }
 
-    if (normalizedStart.getTime() >= normalizedEnd.getTime()) {
-      return res.status(400).json({
-        message: "End date must be after start date",
-      });
-    }
+    if (normalizedStart.getTime() >= normalizedEnd.getTime())
+      return res.status(400).json({ message: "End date must be after start date" });
 
     const overlappingBooking = await Booking.findOne({
       skill: skill._id,
@@ -78,14 +58,8 @@ exports.createBooking = async (req, res) => {
       startDate: { $lt: normalizedEnd },
       endDate: { $gt: normalizedStart },
     });
-
-    if (overlappingBooking) {
-      return res.status(400).json({
-        message: "This date is already booked",
-      });
-    }
-
-    const providerUser = await User.findById(skill.provider);
+    if (overlappingBooking)
+      return res.status(400).json({ message: "This date is already booked" });
 
     const existingPending = await Booking.findOne({
       seeker: req.user._id,
@@ -94,26 +68,21 @@ exports.createBooking = async (req, res) => {
       startDate: { $lt: normalizedEnd },
       endDate: { $gt: normalizedStart },
     });
+    if (existingPending)
+      return res.status(400).json({ message: "Already request pending" });
 
-    if (existingPending) {
-      return res.status(400).json({
-        message: "Already request pending",
-      });
-    }
+    const providerUser = await User.findById(skill.provider);
 
     let enrichedJobAddress;
     if (jobAddress) {
       const validated = await validateAndEnrichAddress(jobAddress);
-      if (!validated.ok) {
-        return res.status(400).json({ message: validated.message });
-      }
+      if (!validated.ok) return res.status(400).json({ message: validated.message });
       enrichedJobAddress = validated.address;
     }
 
     let distanceKmEstimate;
     const jobPin = enrichedJobAddress?.pincode;
     const providerPin = providerUser?.address?.pincode;
-
     if (jobPin && providerPin) {
       distanceKmEstimate = await estimateDistanceKmByPins(providerPin, jobPin);
     }
@@ -128,29 +97,20 @@ exports.createBooking = async (req, res) => {
       jobAddress: enrichedJobAddress,
       jobDescription,
       distanceKmEstimate,
-      pricingSnapshot: {
-        amount: skill.pricing.amount,
-        unit: skill.pricing.unit,
-      },
+      pricingSnapshot: { amount: skill.pricing.amount, unit: skill.pricing.unit },
     });
 
     await Notification.create({
       user: skill.provider,
       title: "New Booking Request",
       message: "Someone requested your skill: " + skill.title,
-      type: "new_booking",
-      bookingId: booking._id,
     });
 
     const provider = await User.findById(skill.provider);
-
-    if (provider && provider.fcmToken) {
-      await sendPush(
-        provider.fcmToken,
-        "New Booking",
-        "Someone booked your skill",
-        { bookingId: booking._id.toString(), type: "new_booking" }
-      );
+    if (provider?.fcmToken) {
+      await sendPush(provider.fcmToken, "New Booking", "Someone booked your skill", {
+        bookingId: booking._id.toString(),
+      });
     }
 
     res.status(201).json(booking);
@@ -159,25 +119,18 @@ exports.createBooking = async (req, res) => {
   }
 };
 
+// ── Occupied slots ─────────────────────────────────────────────────────────────
 exports.getOccupiedSlots = async (req, res) => {
   try {
     const { skillId } = req.params;
     const { date } = req.query;
 
-    if (!date) {
-      return res.status(400).json({
-        message: "Date query parameter is required",
-      });
-    }
+    if (!date) return res.status(400).json({ message: "Date query parameter is required" });
 
     const startOfDay = new Date(date);
     const endOfDay = new Date(date);
-
-    if (isNaN(startOfDay) || isNaN(endOfDay)) {
-      return res.status(400).json({
-        message: "Invalid date format",
-      });
-    }
+    if (isNaN(startOfDay) || isNaN(endOfDay))
+      return res.status(400).json({ message: "Invalid date format" });
 
     startOfDay.setHours(0, 0, 0, 0);
     endOfDay.setHours(23, 59, 59, 999);
@@ -196,16 +149,8 @@ exports.getOccupiedSlots = async (req, res) => {
     }).select("startDate endDate");
 
     const combined = [
-      ...bookings.map((b) => ({
-        startDate: b.startDate,
-        endDate: b.endDate,
-        type: "booking",
-      })),
-      ...blocks.map((b) => ({
-        startDate: b.startDate,
-        endDate: b.endDate,
-        type: "blocked",
-      })),
+      ...bookings.map((b) => ({ startDate: b.startDate, endDate: b.endDate, type: "booking" })),
+      ...blocks.map((b)   => ({ startDate: b.startDate, endDate: b.endDate, type: "blocked" })),
     ];
 
     res.json(combined);
@@ -214,11 +159,13 @@ exports.getOccupiedSlots = async (req, res) => {
   }
 };
 
+// ── Get my bookings (seeker) ───────────────────────────────────────────────────
+// Populates provider with address + rating so seeker detail sheet can show them
 exports.getMyBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({ seeker: req.user._id })
       .populate("skill")
-      .populate("provider", "name email");
+      .populate("provider", "name email address rating totalReviews");
 
     res.status(200).json(bookings);
   } catch (error) {
@@ -226,6 +173,7 @@ exports.getMyBookings = async (req, res) => {
   }
 };
 
+// ── Get provider bookings ──────────────────────────────────────────────────────
 exports.getProviderBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({ provider: req.user._id })
@@ -238,48 +186,20 @@ exports.getProviderBookings = async (req, res) => {
   }
 };
 
+// ── Accept booking ─────────────────────────────────────────────────────────────
 exports.acceptBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    if (booking.provider.toString() !== req.user._id.toString()) {
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
       return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (booking.status !== "requested") {
+    if (booking.status !== "requested")
       return res.status(400).json({ message: "Booking cannot be accepted" });
-    }
 
     booking.status = "accepted";
-
-    // ── GPS auto-fill: check if seeker has a saved home GPS location ──────────
-    const seeker = await User.findById(booking.seeker);
-
-    if (
-      seeker &&
-      seeker.homeGpsLocation &&
-      seeker.homeGpsLocation.lat != null &&
-      seeker.homeGpsLocation.lng != null
-    ) {
-      // Auto-fill job GPS from seeker's saved home location
-      booking.jobGpsLocation = {
-        lat: seeker.homeGpsLocation.lat,
-        lng: seeker.homeGpsLocation.lng,
-      };
-      booking.gpsLocationStatus = "provided";
-    } else {
-      // Mark as pending — seeker must provide GPS manually
-      booking.gpsLocationStatus = "pending";
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
     await booking.save();
 
-    // Auto-reject conflicting bookings
+    // Auto-reject conflicting requests
     const toAutoReject = await Booking.find({
       _id: { $ne: booking._id },
       skill: booking.skill,
@@ -293,90 +213,39 @@ exports.acceptBooking = async (req, res) => {
         { _id: { $in: toAutoReject.map((b) => b._id) } },
         { $set: { status: "rejected" } }
       );
-
       await Promise.all(
         toAutoReject.map(async (b) => {
           await Notification.create({
             user: b.seeker,
             title: "Booking Rejected",
-            message:
-              "Your booking request was rejected because another request was accepted for the same slot.",
-            type: "booking_rejected",
-            bookingId: b._id,
+            message: "Your booking request was rejected because another request was accepted for the same slot.",
           });
-
-          const rejectedSeeker = await User.findById(b.seeker);
-          if (rejectedSeeker && rejectedSeeker.fcmToken) {
-            await sendPush(
-              rejectedSeeker.fcmToken,
-              "Booking Rejected",
-              "Another request was accepted for the same slot",
-              { bookingId: b._id.toString(), type: "booking_rejected" }
-            );
+          const seeker = await User.findById(b.seeker);
+          if (seeker?.fcmToken) {
+            await sendPush(seeker.fcmToken, "Booking Rejected", "Another request was accepted for the same slot");
           }
         })
       );
     }
 
-    // ── Notify seeker: accepted + GPS request (if needed) ────────────────────
-    if (booking.gpsLocationStatus === "provided") {
-      // GPS was auto-filled; just notify acceptance
-      await Notification.create({
-        user: booking.seeker,
-        title: "Booking Accepted",
-        message: "Your booking was accepted. Your saved home location has been shared with the provider.",
-        type: "booking_accepted",
-        bookingId: booking._id,
-      });
+    await Notification.create({
+      user: booking.seeker,
+      title: "Booking Accepted",
+      message: "Your booking was accepted",
+    });
 
-      if (seeker && seeker.fcmToken) {
-        await sendPush(
-          seeker.fcmToken,
-          "Booking Accepted",
-          "Your saved home location was shared with the provider.",
-          { bookingId: booking._id.toString(), type: "booking_accepted" }
-        );
-      }
-
-      // Notify provider that GPS is ready
-      const provider = await User.findById(booking.provider);
-      await Notification.create({
-        user: booking.provider,
-        title: "GPS Location Ready",
-        message: "The job location GPS is available. You can navigate to the job now.",
-        type: "gps_provided",
-        bookingId: booking._id,
-      });
-
-      if (provider && provider.fcmToken) {
-        await sendPush(
-          provider.fcmToken,
-          "GPS Location Ready",
-          "Tap to navigate to the job location.",
-          { bookingId: booking._id.toString(), type: "gps_provided" }
-        );
-      }
-    } else {
-      // GPS pending — ask seeker to share location
-      await Notification.create({
-        user: booking.seeker,
-        title: "Booking Accepted — Share Location",
-        message:
-          "Your booking was accepted! Please provide the exact GPS location of the job site so the provider can navigate there.",
-        type: "gps_required",
-        bookingId: booking._id,
-      });
-
-      if (seeker && seeker.fcmToken) {
-        await sendPush(
-          seeker.fcmToken,
-          "📍 Share Job Location",
-          "Your booking is accepted. Please share the GPS location of the job.",
-          { bookingId: booking._id.toString(), type: "gps_required" }
-        );
-      }
+    const seeker = await User.findById(booking.seeker);
+    if (seeker?.fcmToken) {
+      await sendPush(seeker.fcmToken, "Booking Accepted", "Your booking was accepted");
     }
-    // ─────────────────────────────────────────────────────────────────────────
+
+    // Auto-fill GPS if seeker has home GPS saved
+    const seekerUser = seeker || (await User.findById(booking.seeker));
+    if (seekerUser?.homeGpsLocation?.lat && booking.gpsLocationStatus === "pending") {
+      booking.jobGpsLocation = seekerUser.homeGpsLocation;
+      booking.gpsLocationStatus = "provided";
+      await booking.save();
+    }
 
     res.json(booking);
   } catch (error) {
@@ -384,113 +253,15 @@ exports.acceptBooking = async (req, res) => {
   }
 };
 
-// ── NEW: Seeker submits GPS for a booking ─────────────────────────────────────
-exports.submitJobGps = async (req, res) => {
-  try {
-    const { lat, lng, saveAsHome } = req.body;
-
-    if (lat == null || lng == null) {
-      return res.status(400).json({ message: "lat and lng are required" });
-    }
-
-    const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    // Only the seeker of this booking can submit GPS
-    if (booking.seeker.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (booking.status !== "accepted") {
-      return res
-        .status(400)
-        .json({ message: "GPS can only be submitted for accepted bookings" });
-    }
-
-    // Save GPS on booking
-    booking.jobGpsLocation = { lat, lng };
-    booking.gpsLocationStatus = "provided";
-    await booking.save();
-
-    // Optionally save as seeker's home GPS
-    if (saveAsHome === true) {
-      await User.findByIdAndUpdate(req.user._id, {
-        homeGpsLocation: { lat, lng },
-      });
-    }
-
-    // Notify the provider that GPS is now available
-    const provider = await User.findById(booking.provider);
-
-    await Notification.create({
-      user: booking.provider,
-      title: "GPS Location Shared",
-      message: "The seeker has shared the exact job location. Tap to navigate.",
-      type: "gps_provided",
-      bookingId: booking._id,
-    });
-
-    if (provider && provider.fcmToken) {
-      await sendPush(
-        provider.fcmToken,
-        "📍 Job Location Shared",
-        "The seeker shared GPS for the job. Tap to navigate.",
-        { bookingId: booking._id.toString(), type: "gps_provided" }
-      );
-    }
-
-    res.json({ message: "GPS location saved", booking });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── NEW: Seeker skips GPS sharing ─────────────────────────────────────────────
-exports.skipJobGps = async (req, res) => {
-  try {
-    const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    if (booking.seeker.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (booking.status !== "accepted") {
-      return res.status(400).json({ message: "Booking is not accepted" });
-    }
-
-    booking.gpsLocationStatus = "skipped";
-    await booking.save();
-
-    res.json({ message: "GPS skipped", booking });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ── Reject booking ─────────────────────────────────────────────────────────────
 exports.rejectBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    if (booking.provider.toString() !== req.user._id.toString()) {
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
       return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (booking.status !== "requested") {
+    if (booking.status !== "requested")
       return res.status(400).json({ message: "Booking cannot be rejected" });
-    }
 
     booking.status = "rejected";
     await booking.save();
@@ -499,19 +270,11 @@ exports.rejectBooking = async (req, res) => {
       user: booking.seeker,
       title: "Booking Rejected",
       message: "Your booking was rejected",
-      type: "booking_rejected",
-      bookingId: booking._id,
     });
 
     const seeker = await User.findById(booking.seeker);
-
-    if (seeker && seeker.fcmToken) {
-      await sendPush(
-        seeker.fcmToken,
-        "Booking Rejected",
-        "Your booking was rejected",
-        { bookingId: booking._id.toString(), type: "booking_rejected" }
-      );
+    if (seeker?.fcmToken) {
+      await sendPush(seeker.fcmToken, "Booking Rejected", "Your booking was rejected");
     }
 
     res.json(booking);
@@ -520,69 +283,15 @@ exports.rejectBooking = async (req, res) => {
   }
 };
 
-exports.completeBooking = async (req, res) => {
-  try {
-    const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    if (booking.provider.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (booking.status !== "accepted") {
-      return res
-        .status(400)
-        .json({ message: "Only accepted bookings can be completed" });
-    }
-
-    booking.status = "completed";
-    await booking.save();
-
-    await Notification.create({
-      user: booking.seeker,
-      title: "Booking Completed",
-      message: "Your booking was completed",
-      type: "booking_completed",
-      bookingId: booking._id,
-    });
-
-    const seeker = await User.findById(booking.seeker);
-
-    if (seeker && seeker.fcmToken) {
-      await sendPush(
-        seeker.fcmToken,
-        "Booking Completed",
-        "Your booking was completed",
-        { bookingId: booking._id.toString(), type: "booking_completed" }
-      );
-    }
-
-    res.json(booking);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
+// ── Cancel booking (seeker) ────────────────────────────────────────────────────
 exports.cancelBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      return res.status(404).json({ message: "Booking not found" });
-    }
-
-    if (booking.seeker.toString() !== req.user._id.toString()) {
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.seeker.toString() !== req.user._id.toString())
       return res.status(403).json({ message: "Not authorized" });
-    }
-
-    if (!["requested", "accepted"].includes(booking.status)) {
-      return res.status(400).json({
-        message: "Booking cannot be cancelled",
-      });
-    }
+    if (!["requested", "accepted"].includes(booking.status))
+      return res.status(400).json({ message: "Booking cannot be cancelled" });
 
     booking.status = "cancelled";
     await booking.save();
@@ -593,30 +302,256 @@ exports.cancelBooking = async (req, res) => {
   }
 };
 
+// ── Old complete (kept for compatibility) ──────────────────────────────────────
+exports.completeBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (!["accepted", "in_progress"].includes(booking.status))
+      return res.status(400).json({ message: "Cannot complete this booking" });
+
+    booking.status = "completed";
+    booking.totalAmount = booking.pricingSnapshot.amount + (booking.extraCharges || 0);
+    await booking.save();
+
+    await Notification.create({
+      user: booking.seeker,
+      title: "Booking Completed",
+      message: "Your booking was completed",
+    });
+
+    const seeker = await User.findById(booking.seeker);
+    if (seeker?.fcmToken) {
+      await sendPush(seeker.fcmToken, "Booking Completed", "Your booking was completed");
+    }
+
+    res.json(booking);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  OTP FLOW
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── 1. Provider clicks "Begin" ─────────────────────────────────────────────────
+// Generates beginOtp, stores on booking, notifies seeker (they see it on screen)
+exports.beginBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (booking.status !== "accepted")
+      return res.status(400).json({ message: "Booking must be accepted to begin" });
+
+    const otp = generateOtp();
+    booking.beginOtp = otp;
+    await booking.save();
+
+    await Notification.create({
+      user: booking.seeker,
+      title: "Provider has arrived!",
+      message: `Your provider is at your location. Share OTP ${otp} to begin the service.`,
+      type: "begin_otp",
+      bookingId: booking._id,
+    });
+
+    const seeker = await User.findById(booking.seeker);
+    if (seeker?.fcmToken) {
+      await sendPush(
+        seeker.fcmToken,
+        "Provider has arrived!",
+        `Share OTP ${otp} with your provider to begin`
+      );
+    }
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── 2. Provider enters OTP seeker told them → status = in_progress ─────────────
+exports.verifyBeginOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (booking.status !== "accepted")
+      return res.status(400).json({ message: "Invalid booking status" });
+    if (!booking.beginOtp || booking.beginOtp !== otp)
+      return res.status(400).json({ message: "Invalid OTP" });
+
+    booking.status = "in_progress";
+    booking.beginOtp = null;
+    await booking.save();
+
+    await Notification.create({
+      user: booking.seeker,
+      title: "Service Started",
+      message: "Your service has started and is now in progress.",
+    });
+
+    const seeker = await User.findById(booking.seeker);
+    if (seeker?.fcmToken) {
+      await sendPush(seeker.fcmToken, "Service Started", "Your service is now in progress");
+    }
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── 3. Provider clicks "Complete" (optionally adds extra charges) ──────────────
+// Generates completeOtp, notifies seeker
+exports.requestComplete = async (req, res) => {
+  try {
+    const { extraCharges } = req.body; // optional, number
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (booking.status !== "in_progress")
+      return res.status(400).json({ message: "Booking must be in progress to complete" });
+
+    const otp = generateOtp();
+    booking.completeOtp = otp;
+    booking.actualEndTime = new Date();
+
+    if (extraCharges != null && Number(extraCharges) > 0) {
+      booking.extraCharges = Number(extraCharges);
+    }
+
+    await booking.save();
+
+    const base = booking.pricingSnapshot.amount;
+    const extra = booking.extraCharges || 0;
+
+    await Notification.create({
+      user: booking.seeker,
+      title: "Job Complete - Verify",
+      message: `Provider has finished. Share OTP ${otp} to confirm completion. Total: ₹${base + extra}`,
+      type: "complete_otp",
+      bookingId: booking._id,
+    });
+
+    const seeker = await User.findById(booking.seeker);
+    if (seeker?.fcmToken) {
+      await sendPush(
+        seeker.fcmToken,
+        "Job Complete - Verify",
+        `Share OTP ${otp} with provider to confirm`
+      );
+    }
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── 4. Provider enters completion OTP → status = completed, totalAmount set ─────
+exports.verifyCompleteOtp = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (booking.status !== "in_progress")
+      return res.status(400).json({ message: "Invalid booking status" });
+    if (!booking.completeOtp || booking.completeOtp !== otp)
+      return res.status(400).json({ message: "Invalid OTP" });
+
+    const base = booking.pricingSnapshot.amount;
+    const extra = booking.extraCharges || 0;
+
+    booking.totalAmount = base + extra;
+    booking.status = "completed";
+    booking.completeOtp = null;
+    await booking.save();
+
+    await Notification.create({
+      user: booking.seeker,
+      title: "Service Completed",
+      message: `Your service is complete. Total amount due: ₹${booking.totalAmount}`,
+    });
+
+    const seeker = await User.findById(booking.seeker);
+    if (seeker?.fcmToken) {
+      await sendPush(
+        seeker.fcmToken,
+        "Service Completed",
+        `Total amount: ₹${booking.totalAmount}`
+      );
+    }
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── Submit GPS (seeker) ────────────────────────────────────────────────────────
+exports.submitJobGps = async (req, res) => {
+  try {
+    const { lat, lng, saveAsHome } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.seeker.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+
+    booking.jobGpsLocation = { lat, lng };
+    booking.gpsLocationStatus = "provided";
+    await booking.save();
+
+    if (saveAsHome) {
+      await User.findByIdAndUpdate(req.user._id, { homeGpsLocation: { lat, lng } });
+    }
+
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── Skip GPS (seeker) ──────────────────────────────────────────────────────────
+exports.skipJobGps = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.seeker.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+
+    booking.gpsLocationStatus = "skipped";
+    await booking.save();
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── Occupied slots ─────────────────────────────────────────────────────────────
 exports.getOccupiedRange = async (req, res) => {
   try {
     const { skillId } = req.params;
-
     const bookings = await Booking.find({
       skill: skillId,
       status: { $in: ["accepted", "in_progress"] },
     }).select("startDate endDate");
 
-    const blocks = await BlockedSlot.find({
-      skill: skillId,
-    }).select("startDate endDate");
+    const blocks = await BlockedSlot.find({ skill: skillId }).select("startDate endDate");
 
     const combined = [
-      ...bookings.map((b) => ({
-        startDate: b.startDate,
-        endDate: b.endDate,
-        type: "booking",
-      })),
-      ...blocks.map((b) => ({
-        startDate: b.startDate,
-        endDate: b.endDate,
-        type: "blocked",
-      })),
+      ...bookings.map((b) => ({ startDate: b.startDate, endDate: b.endDate, type: "booking" })),
+      ...blocks.map((b)   => ({ startDate: b.startDate, endDate: b.endDate, type: "blocked" })),
     ];
 
     res.json(combined);
@@ -625,32 +560,22 @@ exports.getOccupiedRange = async (req, res) => {
   }
 };
 
+// ── Toggle blocked slot ────────────────────────────────────────────────────────
 exports.toggleBlockedSlot = async (req, res) => {
   try {
     const { skillId, startDate, endDate, reason } = req.body;
-
-    if (!skillId || !startDate || !endDate) {
-      return res
-        .status(400)
-        .json({ message: "skillId, startDate and endDate are required" });
-    }
+    if (!skillId || !startDate || !endDate)
+      return res.status(400).json({ message: "skillId, startDate and endDate are required" });
 
     const skill = await Skill.findById(skillId);
-
-    if (!skill) {
-      return res.status(404).json({ message: "Skill not found" });
-    }
-
-    if (skill.provider.toString() !== req.user._id.toString()) {
+    if (!skill) return res.status(404).json({ message: "Skill not found" });
+    if (skill.provider.toString() !== req.user._id.toString())
       return res.status(403).json({ message: "Not authorized" });
-    }
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end)
       return res.status(400).json({ message: "Invalid date range" });
-    }
 
     const existing = await BlockedSlot.findOne({
       provider: req.user._id,

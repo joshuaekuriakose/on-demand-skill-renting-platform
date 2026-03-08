@@ -94,7 +94,7 @@ final response = await ApiService.post(
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Add Skill"),
+        title: const Text("Add Service"),
       ),
 
       body: SingleChildScrollView(
@@ -253,7 +253,7 @@ if (_unit == "hour") ...[
   ? const Center(child: CircularProgressIndicator())
   : ElevatedButton(
                     onPressed: _submit,
-                    child: const Text("Add Skill"),
+                    child: const Text("Add Service"),
                   ),
           ],
         ),

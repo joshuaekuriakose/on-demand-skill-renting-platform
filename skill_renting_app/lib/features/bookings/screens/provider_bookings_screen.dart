@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import '../models/booking_model.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
@@ -35,7 +36,6 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
   Future<void> _loadBookings() async {
     setState(() => _loading = true);
     final data = await BookingService.fetchProviderBookings();
-    // Sort latest first (createdAt desc)
     data.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     if (mounted) setState(() { _bookings = data; _loading = false; });
   }
@@ -44,18 +44,12 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
     if (_busy.contains(id)) return;
     setState(() => _busy.add(id));
     try {
-      final success = await BookingService.updateBookingStatus(id, action);
-      if (!success || !mounted) return;
+      final ok = await BookingService.updateBookingStatus(id, action);
+      if (!ok || !mounted) return;
+      final newStatus = action == "accept" ? "accepted" : "rejected";
       setState(() {
         final i = _bookings.indexWhere((b) => b.id == id);
-        if (i != -1) {
-          final newStatus = action == "accept"
-              ? "accepted"
-              : action == "reject"
-                  ? "rejected"
-                  : "completed";
-          _bookings[i] = _bookings[i].copyWith(status: newStatus);
-        }
+        if (i != -1) _bookings[i] = _bookings[i].copyWith(status: newStatus);
       });
       if (action == "accept") {
         final fresh = await BookingService.fetchProviderBookings();
@@ -67,30 +61,338 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
     }
   }
 
-  // ── Getters ────────────────────────────────────────────────────────────────
+  // ── OTP actions ──────────────────────────────────────────────────────────────
+
+  Future<void> _triggerBegin(String bookingId) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final ok = await BookingService.beginBooking(bookingId);
+      if (!ok || !mounted) return;
+      // After triggering, open OTP entry dialog
+      _showOtpEntryDialog(bookingId, isBegin: true);
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
+    }
+  }
+
+  void _showOtpEntryDialog(String bookingId, {required bool isBegin}) {
+    final ctrl = TextEditingController();
+    String? error;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(children: [
+            Icon(isBegin ? Icons.play_circle : Icons.check_circle,
+                color: isBegin ? Colors.blue : Colors.green),
+            const SizedBox(width: 10),
+            Text(isBegin ? "Enter Begin OTP" : "Enter Completion OTP",
+                style: const TextStyle(fontSize: 17)),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Ask the seeker for the OTP shown on their screen.",
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 32, letterSpacing: 12, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  hintText: "• • • •",
+                  hintStyle: const TextStyle(letterSpacing: 12, fontSize: 28),
+                  errorText: error,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onChanged: (_) {
+                  if (error != null) setS(() => error = null);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (ctrl.text.length != 4) {
+                  setS(() => error = "Enter 4-digit OTP");
+                  return;
+                }
+                Navigator.pop(ctx);
+                if (isBegin) {
+                  await _verifyBeginOtp(bookingId, ctrl.text);
+                } else {
+                  await _verifyCompleteOtp(bookingId, ctrl.text);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: isBegin ? Colors.blue : Colors.green,
+                  foregroundColor: Colors.white),
+              child: const Text("Verify"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _verifyBeginOtp(String bookingId, String otp) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final err = await BookingService.verifyBeginOtp(bookingId, otp);
+      if (!mounted) return;
+      if (err != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(err)));
+        // Re-open OTP entry
+        _showOtpEntryDialog(bookingId, isBegin: true);
+        return;
+      }
+      // Success
+      setState(() {
+        final i = _bookings.indexWhere((b) => b.id == bookingId);
+        if (i != -1) _bookings[i] = _bookings[i].copyWith(status: "in_progress");
+      });
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
+    }
+  }
+
+  void _showExtraChargesDialog(BookingModel b) {
+    final now = DateTime.now();
+    final bookedMs = b.endDate.difference(b.startDate).inMilliseconds;
+    final elapsedMs = now.difference(b.startDate).inMilliseconds;
+    final extraMs = elapsedMs - bookedMs;
+
+    double extraAmount = 0;
+    String extraLabel = "";
+
+    if (extraMs > 0) {
+      if (b.pricingUnit == "hour") {
+        final extraHours = extraMs / (1000 * 60 * 60);
+        extraAmount = double.parse((extraHours * b.price).toStringAsFixed(2));
+        extraLabel =
+            "${extraHours.toStringAsFixed(1)} extra hrs × ₹${b.price.toStringAsFixed(0)}/hr";
+      } else if (b.pricingUnit == "day") {
+        final extraDays = (extraMs / (1000 * 60 * 60 * 24)).ceil();
+        extraAmount = extraDays * b.price;
+        extraLabel = "$extraDays extra day(s) × ₹${b.price.toStringAsFixed(0)}/day";
+      }
+    }
+
+    bool addExtra = extraAmount > 0;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Complete Job"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Base amount
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade200)),
+                child: Row(children: [
+                  Icon(Icons.currency_rupee, color: Colors.grey.shade600, size: 18),
+                  const SizedBox(width: 8),
+                  Text("Base rate: ₹${b.price.toStringAsFixed(0)} / ${b.pricingUnit}",
+                      style: const TextStyle(fontSize: 14)),
+                ]),
+              ),
+
+              // Extra charges (only if time overrun)
+              if (extraAmount > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Icon(Icons.more_time,
+                            color: Colors.orange.shade700, size: 18),
+                        const SizedBox(width: 6),
+                        Text("Extra time detected",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade800,
+                                fontSize: 13)),
+                      ]),
+                      const SizedBox(height: 6),
+                      Text(extraLabel,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.orange.shade700)),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Checkbox(
+                          value: addExtra,
+                          activeColor: Colors.orange,
+                          onChanged: (v) => setS(() => addExtra = v ?? false),
+                        ),
+                        Expanded(
+                          child: Text(
+                              "Add ₹${extraAmount.toStringAsFixed(0)} extra",
+                              style: const TextStyle(fontSize: 13)),
+                        ),
+                      ]),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 16),
+
+              // Total
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.shade200)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Total",
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                    Text(
+                      "₹${(b.price + (addExtra ? extraAmount : 0)).toStringAsFixed(0)}",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.green.shade800),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Cancel")),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final charges = addExtra ? extraAmount : 0.0;
+                Navigator.pop(ctx);
+                await _doRequestComplete(b.id, charges);
+              },
+              icon: const Icon(Icons.send, size: 16),
+              label: const Text("Send OTP to Seeker"),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _doRequestComplete(String bookingId, double extraCharges) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final ok = await BookingService.requestComplete(bookingId,
+          extraCharges: extraCharges);
+      if (!ok || !mounted) return;
+      // OTP sent to seeker; show OTP entry for provider
+      _showOtpEntryDialog(bookingId, isBegin: false);
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
+    }
+  }
+
+  Future<void> _verifyCompleteOtp(String bookingId, String otp) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final err = await BookingService.verifyCompleteOtp(bookingId, otp);
+      if (!mounted) return;
+      if (err != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(err)));
+        _showOtpEntryDialog(bookingId, isBegin: false);
+        return;
+      }
+      // Success — refresh to get totalAmount
+      final fresh = await BookingService.fetchProviderBookings();
+      fresh.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      if (mounted) setState(() => _bookings = fresh);
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
+    }
+  }
+
+  // ── Derived lists ────────────────────────────────────────────────────────────
+
   List<BookingModel> get _requests =>
       _bookings.where((b) => b.status == "requested").toList();
 
   List<BookingModel> get _otherBookings =>
       _bookings.where((b) => b.status != "requested").toList();
 
-  /// Groups requests by skillId → Map<skillId, {title, bookings}>
   Map<String, _SkillGroup> get _requestsBySkill {
     final map = <String, _SkillGroup>{};
     for (final b in _requests) {
-      map.putIfAbsent(
-        b.skillId,
-        () => _SkillGroup(skillId: b.skillId, skillTitle: b.skillTitle),
-      ).bookings.add(b);
+      map.putIfAbsent(b.skillId,
+              () => _SkillGroup(skillId: b.skillId, skillTitle: b.skillTitle))
+          .bookings
+          .add(b);
     }
     return map;
+  }
+
+  // ── Navigate helper ──────────────────────────────────────────────────────────
+
+  void _navigate(BookingModel b) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NavigationScreen(
+          jobLat: b.jobGpsLat!,
+          jobLng: b.jobGpsLng!,
+          seekerName: b.seekerName,
+          jobAddress: b.jobAddressFormatted,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("My Bookings"),
+        title: const Text("Job Queue"),
         bottom: TabBar(
           controller: _tabController,
           tabs: [
@@ -126,36 +428,32 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
           : TabBarView(
               controller: _tabController,
               children: [
+                // ── Requests tab ──────────────────────────────────────────
                 _RequestsTab(
                   groups: _requestsBySkill,
                   busy: _busy,
                   onAccept: (id) => _updateStatus(id, "accept"),
                   onReject: (id) => _updateStatus(id, "reject"),
                   onTap: (b) => _showDetailSheet(b),
+                  onRefresh: _loadBookings,
                 ),
+                // ── Bookings tab ──────────────────────────────────────────
                 _BookingsTab(
                   bookings: _otherBookings,
                   busy: _busy,
-                  onComplete: (id) => _updateStatus(id, "complete"),
-                  onNavigate: (b) => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => NavigationScreen(
-                        jobLat: b.jobGpsLat!,
-                        jobLng: b.jobGpsLng!,
-                        seekerName: b.seekerName,
-                        jobAddress: b.jobAddressFormatted,
-                      ),
-                    ),
-                  ),
+                  onBegin: (b) => _triggerBegin(b.id),
+                  onComplete: (b) => _showExtraChargesDialog(b),
+                  onNavigate: (b) => _navigate(b),
                   onTap: (b) => _showDetailSheet(b),
+                  onRefresh: _loadBookings,
                 ),
               ],
             ),
     );
   }
 
-  // ── Full detail bottom sheet ───────────────────────────────────────────────
+  // ── Detail sheet ─────────────────────────────────────────────────────────────
+
   void _showDetailSheet(BookingModel b) {
     showModalBottomSheet(
       context: context,
@@ -170,38 +468,31 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
         onReject: b.status == "requested"
             ? () { Navigator.pop(context); _updateStatus(b.id, "reject"); }
             : null,
-        onComplete: b.status == "accepted"
-            ? () { Navigator.pop(context); _updateStatus(b.id, "complete"); }
+        onBegin: b.status == "accepted"
+            ? () { Navigator.pop(context); _triggerBegin(b.id); }
+            : null,
+        onComplete: b.status == "in_progress"
+            ? () { Navigator.pop(context); _showExtraChargesDialog(b); }
             : null,
         onNavigate: b.hasGps
-            ? () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => NavigationScreen(
-                      jobLat: b.jobGpsLat!,
-                      jobLng: b.jobGpsLng!,
-                      seekerName: b.seekerName,
-                      jobAddress: b.jobAddressFormatted,
-                    ),
-                  ),
-                );
-              }
+            ? () { Navigator.pop(context); _navigate(b); }
             : null,
       ),
     );
   }
 }
 
-// ── Requests tab — grouped by skill ──────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Requests tab
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _RequestsTab extends StatelessWidget {
   final Map<String, _SkillGroup> groups;
   final Set<String> busy;
-  final void Function(String id) onAccept;
-  final void Function(String id) onReject;
+  final void Function(String) onAccept;
+  final void Function(String) onReject;
   final void Function(BookingModel) onTap;
+  final Future<void> Function() onRefresh;
 
   const _RequestsTab({
     required this.groups,
@@ -209,6 +500,7 @@ class _RequestsTab extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onTap,
+    required this.onRefresh,
   });
 
   @override
@@ -217,17 +509,14 @@ class _RequestsTab extends StatelessWidget {
       return const Center(
           child: Text("No pending requests", style: TextStyle(color: Colors.grey)));
     }
-
     final groupList = groups.values.toList();
-
     return RefreshIndicator(
-      onRefresh: () async {},
+      onRefresh: onRefresh,
       child: ListView.builder(
         padding: const EdgeInsets.all(12),
         itemCount: groupList.length,
         itemBuilder: (context, gi) {
           final group = groupList[gi];
-          // Single skill provider — skip grouping header
           if (groups.length == 1) {
             return Column(
               children: group.bookings
@@ -241,7 +530,6 @@ class _RequestsTab extends StatelessWidget {
                   .toList(),
             );
           }
-          // Multiple skills — show expandable group
           return _SkillGroupTile(
             group: group,
             busy: busy,
@@ -255,7 +543,9 @@ class _RequestsTab extends StatelessWidget {
   }
 }
 
-// ── Skill group expandable tile ───────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Skill group tile (expandable)
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _SkillGroupTile extends StatefulWidget {
   final _SkillGroup group;
@@ -290,44 +580,35 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
           BoxShadow(
               color: Colors.black.withOpacity(0.05),
               blurRadius: 8,
-              offset: const Offset(0, 3)),
+              offset: const Offset(0, 3))
         ],
       ),
       child: Column(
         children: [
-          // Group header
           InkWell(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
             onTap: () => setState(() => _expanded = !_expanded),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.group.skillTitle,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
-                  ),
-                  _Badge(widget.group.bookings.length, Colors.orange),
-                  const SizedBox(width: 8),
-                  AnimatedRotation(
-                    turns: _expanded ? 0 : -0.25,
-                    duration: const Duration(milliseconds: 200),
-                    child: const Icon(Icons.keyboard_arrow_down,
-                        color: Colors.grey),
-                  ),
-                ],
-              ),
+              child: Row(children: [
+                Expanded(
+                  child: Text(widget.group.skillTitle,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+                _Badge(widget.group.bookings.length, Colors.orange),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: _expanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
+                ),
+              ]),
             ),
           ),
-          // Requests list
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
-            crossFadeState: _expanded
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
+            crossFadeState:
+                _expanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
             firstChild: Column(
               children: widget.group.bookings
                   .map((b) => _RequestCard(
@@ -348,7 +629,9 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
   }
 }
 
-// ── Compact request card ──────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Request card
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _RequestCard extends StatelessWidget {
   final BookingModel booking;
@@ -374,13 +657,9 @@ class _RequestCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(nested ? 0 : 14),
       child: Container(
-        margin: nested
-            ? const EdgeInsets.symmetric(horizontal: 0)
-            : const EdgeInsets.only(bottom: 10),
+        margin: nested ? EdgeInsets.zero : const EdgeInsets.only(bottom: 10),
         decoration: nested
-            ? BoxDecoration(
-                border: Border(
-                    top: BorderSide(color: Colors.grey.shade100)))
+            ? BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade100)))
             : BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
@@ -388,77 +667,57 @@ class _RequestCard extends StatelessWidget {
                   BoxShadow(
                       color: Colors.black.withOpacity(0.05),
                       blurRadius: 8,
-                      offset: const Offset(0, 3)),
+                      offset: const Offset(0, 3))
                 ],
               ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              // Orange left accent
               Container(
-                width: 4,
-                height: 50,
+                width: 4, height: 50,
                 decoration: BoxDecoration(
-                    color: Colors.orange,
-                    borderRadius: BorderRadius.circular(2)),
+                    color: Colors.orange, borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(width: 12),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Seeker name + "tap for details" hint
-                    Row(
-                      children: [
-                        const Icon(Icons.person_outline,
-                            size: 15, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(b.seekerName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 14)),
-                        const Spacer(),
-                        const Icon(Icons.chevron_right,
-                            size: 18, color: Colors.grey),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // District
                     Row(children: [
-                      const Icon(Icons.location_on,
-                          size: 13, color: Colors.grey),
+                      const Icon(Icons.person_outline, size: 15, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(b.seekerName,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14)),
+                      const Spacer(),
+                      const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                    ]),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      const Icon(Icons.location_on, size: 13, color: Colors.grey),
                       const SizedBox(width: 4),
                       Text(b.jobDistrictLabel,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     ]),
                     const SizedBox(height: 3),
-                    // Date/time
                     Row(children: [
-                      const Icon(Icons.access_time,
-                          size: 13, color: Colors.grey),
+                      const Icon(Icons.access_time, size: 13, color: Colors.grey),
                       const SizedBox(width: 4),
                       Text(b.slotRangeFormatted,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey)),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
                     ]),
                   ],
                 ),
               ),
-
               const SizedBox(width: 8),
-
-              // Accept / Reject inline
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: isBusy
                     ? const SizedBox(
                         key: ValueKey("busy"),
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                        width: 20, height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2))
                     : Column(
                         key: const ValueKey("actions"),
                         mainAxisSize: MainAxisSize.min,
@@ -484,21 +743,27 @@ class _RequestCard extends StatelessWidget {
   }
 }
 
-// ── Bookings tab (accepted / completed / rejected) ────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Bookings tab
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _BookingsTab extends StatelessWidget {
   final List<BookingModel> bookings;
   final Set<String> busy;
-  final void Function(String id) onComplete;
+  final void Function(BookingModel) onBegin;
+  final void Function(BookingModel) onComplete;
   final void Function(BookingModel) onNavigate;
   final void Function(BookingModel) onTap;
+  final Future<void> Function() onRefresh;
 
   const _BookingsTab({
     required this.bookings,
     required this.busy,
+    required this.onBegin,
     required this.onComplete,
     required this.onNavigate,
     required this.onTap,
+    required this.onRefresh,
   });
 
   @override
@@ -507,22 +772,29 @@ class _BookingsTab extends StatelessWidget {
       return const Center(
           child: Text("No bookings yet", style: TextStyle(color: Colors.grey)));
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: bookings.length,
-      itemBuilder: (context, i) {
-        final b = bookings[i];
-        return InkWell(
-          onTap: () => onTap(b),
-          borderRadius: BorderRadius.circular(14),
-          child: _BookingListCard(
-            booking: b,
-            isBusy: busy.contains(b.id),
-            onComplete: () => onComplete(b.id),
-            onNavigate: b.hasGps ? () => onNavigate(b) : null,
-          ),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: bookings.length,
+        itemBuilder: (context, i) {
+          final b = bookings[i];
+          return InkWell(
+            onTap: () => onTap(b),
+            borderRadius: BorderRadius.circular(14),
+            child: _BookingListCard(
+              booking: b,
+              isBusy: busy.contains(b.id),
+              onBegin: b.status == "accepted" ? () => onBegin(b) : null,
+              onComplete: b.status == "in_progress" ? () => onComplete(b) : null,
+              onNavigate: b.hasGps &&
+                      (b.status == "accepted" || b.status == "in_progress")
+                  ? () => onNavigate(b)
+                  : null,
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -530,13 +802,15 @@ class _BookingsTab extends StatelessWidget {
 class _BookingListCard extends StatelessWidget {
   final BookingModel booking;
   final bool isBusy;
-  final VoidCallback onComplete;
+  final VoidCallback? onBegin;
+  final VoidCallback? onComplete;
   final VoidCallback? onNavigate;
 
   const _BookingListCard({
     required this.booking,
     required this.isBusy,
-    required this.onComplete,
+    this.onBegin,
+    this.onComplete,
     this.onNavigate,
   });
 
@@ -545,10 +819,11 @@ class _BookingListCard extends StatelessWidget {
     final b = booking;
     Color statusColor;
     switch (b.status) {
-      case "accepted":  statusColor = Colors.blue;   break;
-      case "completed": statusColor = Colors.green;  break;
-      case "rejected":  statusColor = Colors.red;    break;
-      default:          statusColor = Colors.grey;
+      case "accepted":    statusColor = Colors.blue;   break;
+      case "in_progress": statusColor = Colors.purple; break;
+      case "completed":   statusColor = Colors.green;  break;
+      case "rejected":    statusColor = Colors.red;    break;
+      default:            statusColor = Colors.grey;
     }
 
     return Container(
@@ -565,9 +840,9 @@ class _BookingListCard extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Status bar
           Container(
-            width: 5,
-            height: 90,
+            width: 5, height: 90,
             decoration: BoxDecoration(
               color: statusColor,
               borderRadius: const BorderRadius.only(
@@ -577,42 +852,36 @@ class _BookingListCard extends StatelessWidget {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(b.skillTitle,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15),
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                      _StatusChip(b.status),
-                    ],
-                  ),
+                  Row(children: [
+                    Expanded(
+                      child: Text(b.skillTitle,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    _StatusChip(b.status),
+                  ]),
                   const SizedBox(height: 4),
                   Row(children: [
-                    const Icon(Icons.person_outline,
-                        size: 13, color: Colors.grey),
+                    const Icon(Icons.person_outline, size: 13, color: Colors.grey),
                     const SizedBox(width: 4),
                     Text(b.seekerName,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ]),
                   const SizedBox(height: 2),
                   Row(children: [
-                    const Icon(Icons.access_time,
-                        size: 13, color: Colors.grey),
+                    const Icon(Icons.access_time, size: 13, color: Colors.grey),
                     const SizedBox(width: 4),
                     Text(b.slotRangeFormatted,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ]),
                   const SizedBox(height: 8),
-                  // Actions
+
+                  // Action buttons
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 180),
                     child: isBusy
@@ -620,32 +889,36 @@ class _BookingListCard extends StatelessWidget {
                             key: ValueKey("busy"),
                             children: [
                               SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2)),
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2)),
                               SizedBox(width: 8),
                               Text("Updating…",
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.grey)),
+                                  style: TextStyle(fontSize: 12, color: Colors.grey)),
                             ],
                           )
                         : Wrap(
                             key: const ValueKey("actions"),
                             spacing: 8,
+                            runSpacing: 4,
                             children: [
-                              if (b.status == "accepted") ...[
-                                if (onNavigate != null)
-                                  _SmallBtn(
-                                      label: "Navigate",
-                                      color: Colors.blue.shade700,
-                                      icon: Icons.navigation_rounded,
-                                      onPressed: onNavigate!),
+                              if (onNavigate != null)
+                                _SmallBtn(
+                                    label: "Navigate",
+                                    icon: Icons.navigation_rounded,
+                                    color: Colors.blue.shade700,
+                                    onPressed: onNavigate!),
+                              if (onBegin != null)
+                                _SmallBtn(
+                                    label: "Begin",
+                                    icon: Icons.play_arrow_rounded,
+                                    color: Colors.blue,
+                                    onPressed: onBegin!),
+                              if (onComplete != null)
                                 _SmallBtn(
                                     label: "Complete",
+                                    icon: Icons.check_circle_outline,
                                     color: Colors.green,
-                                    onPressed: onComplete),
-                              ],
+                                    onPressed: onComplete!),
                             ],
                           ),
                   ),
@@ -663,13 +936,16 @@ class _BookingListCard extends StatelessWidget {
   }
 }
 
-// ── Full detail bottom sheet ───────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Full detail bottom sheet (provider view)
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _BookingDetailSheet extends StatelessWidget {
   final BookingModel booking;
   final bool isBusy;
   final VoidCallback? onAccept;
   final VoidCallback? onReject;
+  final VoidCallback? onBegin;
   final VoidCallback? onComplete;
   final VoidCallback? onNavigate;
 
@@ -678,6 +954,7 @@ class _BookingDetailSheet extends StatelessWidget {
     required this.isBusy,
     this.onAccept,
     this.onReject,
+    this.onBegin,
     this.onComplete,
     this.onNavigate,
   });
@@ -687,16 +964,19 @@ class _BookingDetailSheet extends StatelessWidget {
     final b = booking;
     Color statusColor;
     switch (b.status) {
-      case "requested":  statusColor = Colors.orange; break;
-      case "accepted":   statusColor = Colors.blue;   break;
-      case "completed":  statusColor = Colors.green;  break;
-      default:           statusColor = Colors.red;
+      case "requested":   statusColor = Colors.orange; break;
+      case "accepted":    statusColor = Colors.blue;   break;
+      case "in_progress": statusColor = Colors.purple; break;
+      case "completed":   statusColor = Colors.green;  break;
+      default:            statusColor = Colors.red;
     }
 
+    final statusLabel = b.status.replaceAll("_", " ").toUpperCase();
+
     return DraggableScrollableSheet(
-      initialChildSize: 0.65,
+      initialChildSize: 0.72,
       minChildSize: 0.4,
-      maxChildSize: 0.95,
+      maxChildSize: 0.96,
       builder: (_, ctrl) => Container(
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -704,33 +984,28 @@ class _BookingDetailSheet extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // Drag handle
             Container(
               margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
+              width: 40, height: 4,
               decoration: BoxDecoration(
                   color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2)),
             ),
-
             Expanded(
               child: SingleChildScrollView(
                 controller: ctrl,
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Status chip + skill title
+                    // Title + status
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Text(
-                            b.skillTitle,
-                            style: const TextStyle(
-                                fontSize: 20, fontWeight: FontWeight.bold),
-                          ),
+                          child: Text(b.skillTitle,
+                              style: const TextStyle(
+                                  fontSize: 20, fontWeight: FontWeight.bold)),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -738,61 +1013,56 @@ class _BookingDetailSheet extends StatelessWidget {
                           decoration: BoxDecoration(
                               color: statusColor.withOpacity(0.12),
                               borderRadius: BorderRadius.circular(20)),
-                          child: Text(
-                            b.status.toUpperCase(),
-                            style: TextStyle(
-                                color: statusColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11),
-                          ),
+                          child: Text(statusLabel,
+                              style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11)),
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 4),
-
-                    // Created at — light grey small
-                    Text(
-                      "Requested on ${b.createdAtFormatted}",
-                      style: TextStyle(
-                          color: Colors.grey.shade400, fontSize: 12),
-                    ),
+                    Text("Requested on ${b.createdAtFormatted}",
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
 
                     const SizedBox(height: 20),
                     const _SectionLabel("Seeker"),
-
-                    _DetailRow(
-                      icon: Icons.person,
-                      text: b.seekerName,
-                      bold: true,
-                    ),
+                    _DetailRow(icon: Icons.person, text: b.seekerName, bold: true),
 
                     const SizedBox(height: 16),
                     const _SectionLabel("When"),
-
-                    _DetailRow(
-                      icon: Icons.calendar_today,
-                      text: b.slotRangeFormatted,
-                    ),
+                    _DetailRow(icon: Icons.calendar_today, text: b.slotRangeFormatted),
 
                     const SizedBox(height: 16),
                     const _SectionLabel("Location"),
-
-                    _DetailRow(
-                      icon: Icons.location_on,
-                      text: b.jobAddressFormatted,
-                    ),
+                    _DetailRow(icon: Icons.location_on, text: b.jobAddressFormatted),
                     if (b.distanceKmEstimate != null) ...[
                       const SizedBox(height: 6),
                       _DetailRow(
-                        icon: Icons.directions_walk,
-                        text: b.distanceLabel,
-                        subtle: true,
-                      ),
+                          icon: Icons.directions_walk,
+                          text: b.distanceLabel,
+                          subtle: true),
                     ],
 
-                    if (b.jobDescription != null &&
-                        b.jobDescription!.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const _SectionLabel("Pricing"),
+                    _DetailRow(
+                        icon: Icons.currency_rupee,
+                        text: "₹${b.price.toStringAsFixed(0)} / ${b.pricingUnit}"),
+                    if (b.extraCharges > 0) ...[
+                      const SizedBox(height: 4),
+                      _DetailRow(
+                          icon: Icons.more_time,
+                          text: "Extra: ₹${b.extraCharges.toStringAsFixed(0)}",
+                          subtle: true),
+                      const SizedBox(height: 4),
+                      _DetailRow(
+                          icon: Icons.receipt,
+                          text: "Total: ₹${b.amountDue.toStringAsFixed(0)}",
+                          bold: true),
+                    ],
+
+                    if (b.jobDescription != null && b.jobDescription!.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       const _SectionLabel("Description"),
                       Container(
@@ -801,20 +1071,16 @@ class _BookingDetailSheet extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: Colors.grey.shade50,
                           borderRadius: BorderRadius.circular(10),
-                          border:
-                              Border.all(color: Colors.grey.shade200),
+                          border: Border.all(color: Colors.grey.shade200),
                         ),
-                        child: Text(
-                          b.jobDescription!,
-                          style: const TextStyle(
-                              fontSize: 14, height: 1.5),
-                        ),
+                        child: Text(b.jobDescription!,
+                            style: const TextStyle(fontSize: 14, height: 1.5)),
                       ),
                     ],
 
                     const SizedBox(height: 28),
 
-                    // Action buttons
+                    // Actions
                     if (isBusy)
                       const Center(child: CircularProgressIndicator())
                     else
@@ -827,8 +1093,7 @@ class _BookingDetailSheet extends StatelessWidget {
                               style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blue,
                                   foregroundColor: Colors.white,
-                                  minimumSize:
-                                      const Size.fromHeight(48)),
+                                  minimumSize: const Size.fromHeight(48)),
                               child: const Text("Accept Request"),
                             ),
                           if (onReject != null) ...[
@@ -837,37 +1102,44 @@ class _BookingDetailSheet extends StatelessWidget {
                               onPressed: onReject,
                               style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red,
-                                  minimumSize:
-                                      const Size.fromHeight(48)),
+                                  minimumSize: const Size.fromHeight(48)),
                               child: const Text("Reject Request"),
                             ),
                           ],
                           if (onNavigate != null) ...[
                             ElevatedButton.icon(
                               onPressed: onNavigate,
-                              icon: const Icon(
-                                  Icons.navigation_rounded,
-                                  size: 18),
+                              icon: const Icon(Icons.navigation_rounded, size: 18),
                               label: const Text("Navigate to Job"),
                               style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      Colors.blue.shade700,
+                                  backgroundColor: Colors.blue.shade700,
                                   foregroundColor: Colors.white,
-                                  minimumSize:
-                                      const Size.fromHeight(48)),
+                                  minimumSize: const Size.fromHeight(48)),
                             ),
                             const SizedBox(height: 8),
                           ],
-                          if (onComplete != null)
-                            ElevatedButton(
+                          if (onBegin != null)
+                            ElevatedButton.icon(
+                              onPressed: onBegin,
+                              icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                              label: const Text("Begin Job (Send OTP)"),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(48)),
+                            ),
+                          if (onComplete != null) ...[
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
                               onPressed: onComplete,
+                              icon: const Icon(Icons.check_circle_outline, size: 20),
+                              label: const Text("Mark Complete"),
                               style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
-                                  minimumSize:
-                                      const Size.fromHeight(48)),
-                              child: const Text("Mark as Complete"),
+                                  minimumSize: const Size.fromHeight(48)),
                             ),
+                          ],
                         ],
                       ),
                   ],
@@ -881,7 +1153,9 @@ class _BookingDetailSheet extends StatelessWidget {
   }
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// Small helpers
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _SkillGroup {
   final String skillId;
@@ -899,13 +1173,11 @@ class _Badge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-          color: color, borderRadius: BorderRadius.circular(10)),
+      decoration:
+          BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
       child: Text("$count",
           style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.bold)),
+              color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
     );
   }
 }
@@ -918,17 +1190,18 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     Color color;
     switch (status) {
-      case "requested": color = Colors.orange; break;
-      case "accepted":  color = Colors.blue;   break;
-      case "completed": color = Colors.green;  break;
-      default:          color = Colors.red;
+      case "requested":   color = Colors.orange; break;
+      case "accepted":    color = Colors.blue;   break;
+      case "in_progress": color = Colors.purple; break;
+      case "completed":   color = Colors.green;  break;
+      default:            color = Colors.red;
     }
+    final label = status.replaceAll("_", " ").toUpperCase();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20)),
-      child: Text(status.toUpperCase(),
+          color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+      child: Text(label,
           style: TextStyle(
               color: color, fontSize: 10, fontWeight: FontWeight.w700)),
     );
@@ -957,15 +1230,13 @@ class _SmallBtn extends StatelessWidget {
             foregroundColor: color,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          )
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap)
         : ElevatedButton.styleFrom(
             backgroundColor: color,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          );
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap);
 
     if (outlined) {
       return OutlinedButton(
@@ -1012,12 +1283,11 @@ class _DetailRow extends StatelessWidget {
   final bool bold;
   final bool subtle;
 
-  const _DetailRow({
-    required this.icon,
-    required this.text,
-    this.bold = false,
-    this.subtle = false,
-  });
+  const _DetailRow(
+      {required this.icon,
+      required this.text,
+      this.bold = false,
+      this.subtle = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1027,14 +1297,12 @@ class _DetailRow extends StatelessWidget {
         Icon(icon, size: 16, color: Colors.grey.shade400),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: bold ? 15 : 14,
-              fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-              color: subtle ? Colors.grey.shade500 : Colors.black87,
-            ),
-          ),
+          child: Text(text,
+              style: TextStyle(
+                fontSize: bold ? 15 : 14,
+                fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+                color: subtle ? Colors.grey.shade500 : Colors.black87,
+              )),
         ),
       ],
     );

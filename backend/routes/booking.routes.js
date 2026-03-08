@@ -13,28 +13,34 @@ const {
   cancelBooking,
   getOccupiedRange,
   toggleBlockedSlot,
-  submitJobGps,   // NEW
-  skipJobGps,     // NEW
+  beginBooking,
+  verifyBeginOtp,
+  requestComplete,
+  verifyCompleteOtp,
+  submitJobGps,
+  skipJobGps,
 } = require("../controllers/booking.controller");
 
-router.post("/", protect, createBooking);
-router.get("/occupied/:skillId", protect, getOccupiedSlots);
-router.get("/my", protect, getMyBookings);
-router.get("/provider", protect, getProviderBookings);
-router.put("/:id/accept", protect, acceptBooking);
-router.put("/:id/reject", protect, rejectBooking);
-router.put("/:id/complete", protect, completeBooking);
-router.put("/:id/cancel", protect, cancelBooking);
-router.get("/occupied-range/:skillId", protect, getOccupiedRange);
-router.post("/blocks/toggle", protect, toggleBlockedSlot);
+router.post("/",                         protect, createBooking);
+router.get("/occupied/:skillId",         protect, getOccupiedSlots);
+router.get("/my",                        protect, getMyBookings);
+router.get("/provider",                  protect, getProviderBookings);
+router.get("/occupied-range/:skillId",   protect, getOccupiedRange);
+router.post("/blocks/toggle",            protect, toggleBlockedSlot);
 
-// ── GPS routes ─────────────────────────────────────────────────────────────
-// Seeker submits GPS location for accepted booking
-// Body: { lat: number, lng: number, saveAsHome: boolean }
-router.put("/:id/gps", protect, submitJobGps);
+router.put("/:id/accept",               protect, acceptBooking);
+router.put("/:id/reject",               protect, rejectBooking);
+router.put("/:id/cancel",               protect, cancelBooking);
+router.put("/:id/complete",             protect, completeBooking);   // legacy / fallback
 
-// Seeker opts to skip GPS sharing
-router.put("/:id/skip-gps", protect, skipJobGps);
-// ──────────────────────────────────────────────────────────────────────────
+// OTP flow
+router.put("/:id/begin",                protect, beginBooking);       // provider triggers begin OTP
+router.put("/:id/verify-begin",         protect, verifyBeginOtp);     // provider submits begin OTP → in_progress
+router.put("/:id/request-complete",     protect, requestComplete);    // provider triggers complete OTP (+ optional extra charges)
+router.put("/:id/verify-complete",      protect, verifyCompleteOtp);  // provider submits complete OTP → completed
+
+// GPS
+router.put("/:id/gps",                  protect, submitJobGps);
+router.put("/:id/skip-gps",             protect, skipJobGps);
 
 module.exports = router;

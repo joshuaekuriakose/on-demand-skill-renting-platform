@@ -459,7 +459,7 @@ class _MainDashboardState extends State<MainDashboard> {
             ),
             _DashboardIcon(
               icon: Icons.add_business,
-              label: "My Skills",
+              label: "Services",
               onTap: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const MySkillsScreen())),
             ),

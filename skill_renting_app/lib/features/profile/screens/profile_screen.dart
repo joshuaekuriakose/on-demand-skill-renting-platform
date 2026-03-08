@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import 'package:skill_renting_app/features/profile/profile_service.dart';
@@ -24,18 +25,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfile() async {
     final data = await ProfileService.getProfile();
-
-    setState(() {
-      _profile = data;
-      _loading = false;
-    });
+    setState(() { _profile = data; _loading = false; });
   }
 
   Future<void> _logout() async {
     await AuthStorage.clear();
-
     if (!mounted) return;
-
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -44,124 +39,147 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showEditDialog() async {
-  final nameController =
-      TextEditingController(text: _profile?.name ?? "");
-  final phoneController =
-      TextEditingController(text: _profile?.phone ?? "");
-  final houseController = TextEditingController(
-    text: _profile?.address?["houseName"]?.toString() ?? "",
-  );
-  final localityController = TextEditingController(
-    text: _profile?.address?["locality"]?.toString() ?? "",
-  );
-  final pinController = TextEditingController(
-    text: _profile?.address?["pincode"]?.toString() ?? "",
-  );
-  final districtController = TextEditingController(
-    text: _profile?.address?["district"]?.toString() ?? "",
-  );
+    final nameController =
+        TextEditingController(text: _profile?.name ?? "");
+    final phoneController =
+        TextEditingController(text: _profile?.phone ?? "");
+    final houseController = TextEditingController(
+        text: _profile?.address?["houseName"]?.toString() ?? "");
+    final localityController = TextEditingController(
+        text: _profile?.address?["locality"]?.toString() ?? "");
+    final pinController = TextEditingController(
+        text: _profile?.address?["pincode"]?.toString() ?? "");
+    final districtController = TextEditingController(
+        text: _profile?.address?["district"]?.toString() ?? "");
 
-  await showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text("Edit Profile"),
+    await showDialog(
+      context: context,
+      builder: (context) {
+        String? phoneError;
 
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        return StatefulBuilder(
+          builder: (context, setS) {
+            String? validatePhone(String v) {
+              if (v.isEmpty) return null;
+              if (v.length != 10) return "Invalid number";
+              return null;
+            }
 
-            // Name
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: "Name",
+            return AlertDialog(
+              title: const Text("Edit Profile"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Name
+                    TextField(
+                      controller: nameController,
+                      decoration:
+                          const InputDecoration(labelText: "Name"),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Phone with inline validation
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: "Phone",
+                        errorText: phoneError,
+                      ),
+                      onChanged: (v) {
+                        final err = validatePhone(v);
+                        if (err != phoneError) {
+                          setS(() => phoneError = err);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+
+                    TextField(
+                      controller: houseController,
+                      decoration:
+                          const InputDecoration(labelText: "House name"),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: localityController,
+                      decoration:
+                          const InputDecoration(labelText: "Locality"),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: pinController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(6),
+                      ],
+                      decoration:
+                          const InputDecoration(labelText: "PIN code"),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: districtController,
+                      decoration:
+                          const InputDecoration(labelText: "District"),
+                    ),
+                  ],
+                ),
               ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // Phone
-            TextField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: "Phone",
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: houseController,
-              decoration: const InputDecoration(
-                labelText: "House name",
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: localityController,
-              decoration: const InputDecoration(
-                labelText: "Locality",
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: pinController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "PIN code",
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: districtController,
-              decoration: const InputDecoration(
-                labelText: "District",
-              ),
-            ),
-            ],
-          ),
-        ),
-
-        actions: [
-
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-
-          ElevatedButton(
-            child: const Text("Save"),
-
-            onPressed: () async {
-              final success = await ProfileService.updateProfile(
-                nameController.text.trim(),
-                phoneController.text.trim(),
-                address: {
-                  "houseName": houseController.text.trim(),
-                  "locality": localityController.text.trim(),
-                  "pincode": pinController.text.trim(),
-                  "district": districtController.text.trim(),
-                },
-              );
-
-              if (success) {
-                Navigator.pop(context);
-                _loadProfile(); // refresh UI
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Profile updated"),
-                  ),
-                );
-              }
-            },
-          ),
-        ],
-      );
-    },
-  );
-}
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  // Disable Save if phone error present
+                  onPressed: phoneError != null
+                      ? null
+                      : () async {
+                          // Final validation before saving
+                          final err = validatePhone(
+                              phoneController.text.trim());
+                          if (err != null) {
+                            setS(() => phoneError = err);
+                            return;
+                          }
+                          final success =
+                              await ProfileService.updateProfile(
+                            nameController.text.trim(),
+                            phoneController.text.trim(),
+                            address: {
+                              "houseName":
+                                  houseController.text.trim(),
+                              "locality":
+                                  localityController.text.trim(),
+                              "pincode": pinController.text.trim(),
+                              "district":
+                                  districtController.text.trim(),
+                            },
+                          );
+                          if (success && context.mounted) {
+                            Navigator.pop(context);
+                            _loadProfile();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text("Profile updated")),
+                            );
+                          }
+                        },
+                  child: const Text("Save"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +188,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text("Profile"),
         centerTitle: true,
       ),
-
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _profile == null
@@ -178,99 +195,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
               : SingleChildScrollView(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
-
                     child: Column(
                       children: [
-      // Avatar
-      CircleAvatar(
-        radius: 45,
-        backgroundColor: Colors.indigo,
-
-        child: Text(
-          _profile!.name.isNotEmpty
-              ? _profile!.name[0].toUpperCase()
-              : "U",
-          style: const TextStyle(
-            fontSize: 32,
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-
+                        CircleAvatar(
+                          radius: 45,
+                          backgroundColor: Colors.indigo,
+                          child: Text(
+                            _profile!.name.isNotEmpty
+                                ? _profile!.name[0].toUpperCase()
+                                : "U",
+                            style: const TextStyle(
+                                fontSize: 32,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
                         const SizedBox(height: 12),
-
-                        // ================= NAME =================
-                        Text(
-                          _profile!.name,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
+                        Text(_profile!.name,
+                            style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
-
-                        // ================= EMAIL =================
-                        Text(
-                          _profile!.email,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                          ),
-                        ),
-
+                        Text(_profile!.email,
+                            style:
+                                const TextStyle(color: Colors.grey)),
                         const SizedBox(height: 20),
-
                         const Divider(),
-
                         const SizedBox(height: 20),
-
-                        // ================= INFO CARDS =================
-
                         _InfoTile(
                           icon: Icons.phone,
                           title: "Phone",
                           value: _profile!.phone,
                         ),
-
                         _InfoTile(
                           icon: Icons.lock,
                           title: "Password",
                           value: "••••••••",
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
                                 builder: (_) =>
-                                    const ChangePasswordScreen(),
-                              ),
-                            );
-                          },
+                                    const ChangePasswordScreen()),
+                          ),
                         ),
-
                         const SizedBox(height: 30),
-
-                        // ================= ACTION BUTTONS =================
-
                         SizedBox(
-  width: double.infinity,
-  child: ElevatedButton.icon(
-    icon: const Icon(Icons.edit),
-    label: const Text("Edit Profile"),
-    onPressed: _showEditDialog,
-  ),
-),
-
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.edit),
+                            label: const Text("Edit Profile"),
+                            onPressed: _showEditDialog,
+                          ),
+                        ),
                         const SizedBox(height: 12),
-
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
                             icon: const Icon(Icons.logout),
                             label: const Text("Logout"),
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
+                                foregroundColor: Colors.red),
                             onPressed: _logout,
                           ),
                         ),
@@ -281,10 +265,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
-
-// =======================================================
-// Info Tile Widget
-// =======================================================
 
 class _InfoTile extends StatelessWidget {
   final IconData icon;
@@ -304,21 +284,14 @@ class _InfoTile extends StatelessWidget {
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
-
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: Icon(icon, color: Colors.indigo),
-
         title: Text(title),
-
         subtitle: Text(value),
-
-        trailing:
-            onTap != null ? const Icon(Icons.arrow_forward_ios, size: 16) : null,
-
+        trailing: onTap != null
+            ? const Icon(Icons.arrow_forward_ios, size: 16)
+            : null,
         onTap: onTap,
       ),
     );

@@ -20,55 +20,34 @@ const bookingSchema = new mongoose.Schema(
       required: true,
     },
 
-    startDate: {
-      type: Date,
-      required: true,
-    },
-
-    endDate: {
-      type: Date,
-    },
-
-    duration: {
-      type: String,
-    },
+    startDate: { type: Date, required: true },
+    endDate:   { type: Date },
+    duration:  { type: String },
 
     jobAddress: {
       houseName: { type: String },
-      locality: { type: String },
-      pincode: { type: String },
-      district: { type: String },
+      locality:  { type: String },
+      pincode:   { type: String },
+      district:  { type: String },
     },
 
-    // ── GPS Location ──────────────────────────────────────────────────────────
+    jobDescription: { type: String },
+
+    distanceKmEstimate: { type: Number },
+
     jobGpsLocation: {
       lat: { type: Number },
       lng: { type: Number },
     },
 
-    // pending  → seeker hasn't responded yet
-    // provided → seeker shared GPS (or auto-filled from saved home)
-    // skipped  → seeker chose to skip
     gpsLocationStatus: {
       type: String,
       enum: ["pending", "provided", "skipped"],
       default: "pending",
     },
-    // ─────────────────────────────────────────────────────────────────────────
-
-    jobDescription: {
-      type: String,
-    },
-
-    distanceKmEstimate: {
-      type: Number,
-    },
 
     pricingSnapshot: {
-      amount: {
-        type: Number,
-        required: true,
-      },
+      amount: { type: Number, required: true },
       unit: {
         type: String,
         enum: ["hour", "day", "week", "month", "task"],
@@ -89,32 +68,38 @@ const bookingSchema = new mongoose.Schema(
       default: "requested",
     },
 
-    cancellationReason: {
+    // ── OTP handshake ──────────────────────────────────────────────────────────
+    // Provider clicks "Begin" → beginOtp generated, sent to seeker
+    // Provider enters OTP seeker says → verified → in_progress, cleared
+    beginOtp: { type: String, default: null },
+
+    // Provider clicks "Complete" → completeOtp generated, sent to seeker
+    // Provider enters OTP seeker says → verified → completed, cleared
+    completeOtp: { type: String, default: null },
+
+    // ── Timing & payment ───────────────────────────────────────────────────────
+    actualEndTime: { type: Date, default: null },
+
+    // Optional extra charges provider may add for time overrun
+    extraCharges: { type: Number, default: 0 },
+
+    // Base + extra; set when completeOtp is verified
+    totalAmount: { type: Number, default: null },
+
+    paymentStatus: {
       type: String,
+      enum: ["pending", "paid"],
+      default: "pending",
     },
 
-    isDisputed: {
-      type: Boolean,
-      default: false,
-    },
-
-    isReviewed: {
-      type: Boolean,
-      default: false,
-    },
-
-    rescheduleRequested: {
-      type: Boolean,
-      default: false,
-    },
-
-    rescheduleReason: {
-      type: String,
-    },
+    // ── Misc ───────────────────────────────────────────────────────────────────
+    cancellationReason: { type: String },
+    isDisputed:         { type: Boolean, default: false },
+    isReviewed:         { type: Boolean, default: false },
+    rescheduleRequested:{ type: Boolean, default: false },
+    rescheduleReason:   { type: String },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Booking", bookingSchema);

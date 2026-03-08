@@ -6,7 +6,7 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
       required: true,
-      unique: true, // one review per booking
+      unique: true,
     },
 
     reviewer: {
@@ -44,6 +44,11 @@ const reviewSchema = new mongoose.Schema(
       default: true,
     },
 
+    // Provider reply — public, visible to all seekers
+    providerReply: {
+      text: { type: String, trim: true, default: null },
+      repliedAt: { type: Date, default: null },
+    },
   },
   {
     timestamps: true,

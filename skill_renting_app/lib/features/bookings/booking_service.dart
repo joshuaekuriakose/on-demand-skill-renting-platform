@@ -117,6 +117,54 @@ class BookingService {
     return response["statusCode"] == 200;
   }
 
+  // ── OTP flow ────────────────────────────────────────────────────────────────
+
+  /// Provider triggers "Begin" → server generates OTP, sends to seeker
+  static Future<bool> beginBooking(String bookingId) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return false;
+    final response = await ApiService.put("/bookings/$bookingId/begin", {}, token: token);
+    return response["statusCode"] == 200;
+  }
+
+  /// Provider submits OTP seeker told them → status = in_progress
+  static Future<String?> verifyBeginOtp(String bookingId, String otp) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return "Unauthorised";
+    final response = await ApiService.put(
+      "/bookings/$bookingId/verify-begin",
+      {"otp": otp},
+      token: token,
+    );
+    if (response["statusCode"] == 200) return null; // null = success
+    final msg = response["data"]?["message"] ?? response["message"] ?? "Invalid OTP";
+    return msg.toString();
+  }
+
+  /// Provider triggers "Complete" (with optional extra charges) → server generates OTP, sends to seeker
+  static Future<bool> requestComplete(String bookingId, {double extraCharges = 0}) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return false;
+    final body = <String, dynamic>{};
+    if (extraCharges > 0) body["extraCharges"] = extraCharges;
+    final response = await ApiService.put("/bookings/$bookingId/request-complete", body, token: token);
+    return response["statusCode"] == 200;
+  }
+
+  /// Provider submits completion OTP → status = completed
+  static Future<String?> verifyCompleteOtp(String bookingId, String otp) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return "Unauthorised";
+    final response = await ApiService.put(
+      "/bookings/$bookingId/verify-complete",
+      {"otp": otp},
+      token: token,
+    );
+    if (response["statusCode"] == 200) return null;
+    final msg = response["data"]?["message"] ?? response["message"] ?? "Invalid OTP";
+    return msg.toString();
+  }
+
   // ── GPS ─────────────────────────────────────────────────────────────────────
 
   /// Seeker submits the GPS location for an accepted booking.

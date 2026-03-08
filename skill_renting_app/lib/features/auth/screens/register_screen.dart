@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../auth_service.dart';
 import '../../dashboard/main_dashboard.dart';
 import 'login_screen.dart';
@@ -24,11 +25,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _isLoading = false;
   String? _error;
+  String? _phoneError; // inline phone error
+
+  String? _validatePhone(String phone) {
+    if (phone.isEmpty) return null; // let server validate required
+    if (phone.length != 10) return "Invalid number";
+    return null;
+  }
 
   Future<void> _register() async {
+    // Validate phone before submitting
+    final phoneError = _validatePhone(_phoneController.text.trim());
+    if (phoneError != null) {
+      setState(() => _phoneError = phoneError);
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _error = null;
+      _phoneError = null;
     });
 
     final user = await AuthService.register(
@@ -61,25 +77,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     Navigator.pushReplacement(
-  context,
-  MaterialPageRoute(
-    builder: (_) => const LoginScreen(),
-  ),
-);
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
 
-final fcmToken = await FirebaseMessaging.instance.getToken();
-
-if (fcmToken != null) {
-  await ApiService.post(
-    "/users/save-token",
-    {
-      "token": fcmToken,
-    },
-    token: user.token,
-  );
-}
-
-
+    final fcmToken = await FirebaseMessaging.instance.getToken();
+    if (fcmToken != null) {
+      await ApiService.post(
+        "/users/save-token",
+        {"token": fcmToken},
+        token: user.token,
+      );
+    }
   }
 
   @override
@@ -100,12 +109,30 @@ if (fcmToken != null) {
               TextField(
                 controller: _emailController,
                 decoration: const InputDecoration(labelText: "Email"),
+                keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 10),
+
+              // Phone with inline validation
               TextField(
                 controller: _phoneController,
-                decoration: const InputDecoration(labelText: "Phone"),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                decoration: InputDecoration(
+                  labelText: "Phone",
+                  errorText: _phoneError,
+                ),
+                onChanged: (v) {
+                  final err = _validatePhone(v);
+                  if (err != _phoneError) {
+                    setState(() => _phoneError = err);
+                  }
+                },
               ),
+
               const SizedBox(height: 10),
               TextField(
                 controller: _passwordController,
@@ -121,21 +148,22 @@ if (fcmToken != null) {
               const SizedBox(height: 10),
               TextField(
                 controller: _localityController,
-                decoration:
-                    const InputDecoration(labelText: "Locality"),
+                decoration: const InputDecoration(labelText: "Locality"),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: _pinController,
                 keyboardType: TextInputType.number,
-                decoration:
-                    const InputDecoration(labelText: "PIN code"),
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                decoration: const InputDecoration(labelText: "PIN code"),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: _districtController,
-                decoration:
-                    const InputDecoration(labelText: "District"),
+                decoration: const InputDecoration(labelText: "District"),
               ),
               const SizedBox(height: 20),
               if (_error != null)
@@ -144,13 +172,12 @@ if (fcmToken != null) {
               ElevatedButton(
                 onPressed: _isLoading ? null : _register,
                 child: _isLoading
-    ? const SizedBox(
-        height: 22,
-        width: 22,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      )
-    : const Text("Register"),
-
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text("Register"),
               ),
             ],
           ),
