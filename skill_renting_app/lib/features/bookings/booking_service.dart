@@ -277,4 +277,15 @@ class BookingService {
       );
     }
   }
+
+  static Future<bool> markPaymentDone(String bookingId) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return false;
+    final res = await ApiService.put(
+      "/bookings/$bookingId/mark-paid",
+      {},
+      token: token,
+    );
+    return res["statusCode"] == 200;
+  }
 }

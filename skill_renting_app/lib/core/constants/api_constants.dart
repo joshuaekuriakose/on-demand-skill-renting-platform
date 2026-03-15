@@ -13,4 +13,6 @@ class ApiConstants {
    //Hotspot
    //static const String baseUrl = "http://192.168.81.96:5000/api";
 
+    // College WiFi
+   //static const String baseUrl = "http://10.10.157.246:5000/api";
 }

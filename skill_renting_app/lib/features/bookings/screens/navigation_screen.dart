@@ -1,12 +1,10 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Shows the job location on a map and lets the provider open
-/// Google Maps / Waze / native maps for turn-by-turn navigation.
-/// Uses OpenStreetMap — free, no API key required.
 class NavigationScreen extends StatefulWidget {
   final double jobLat;
   final double jobLng;
@@ -30,6 +28,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   LatLng? _myLocation;
   bool _loadingMyLocation = true;
+  bool _mapReady = false;
   late final LatLng _jobLatLng;
 
   @override
@@ -67,8 +66,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
         _loadingMyLocation = false;
       });
 
-      // Fit both markers in view
-      _fitBounds();
+      if (_mapReady) _fitBounds();
     } catch (_) {
       setState(() => _loadingMyLocation = false);
     }
@@ -104,38 +102,71 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
   }
 
-  /// Opens Google Maps app for turn-by-turn navigation.
-  Future<void> _openGoogleMaps() async {
-    final origin = _myLocation != null
-        ? "&origin=${_myLocation!.latitude},${_myLocation!.longitude}"
-        : "";
+  // ── Map launch helpers ────────────────────────────────────────────────────
 
-    final uri = Uri.parse(
+  /// Opens Google Maps app directly via deep link.
+  /// Falls back to browser if the app is not installed.
+  Future<void> _openGoogleMaps() async {
+    final dst = "${widget.jobLat},${widget.jobLng}";
+    final origin = _myLocation != null
+        ? "${_myLocation!.latitude},${_myLocation!.longitude}"
+        : null;
+
+    // Try the native Google Maps URI scheme first (opens the app, not browser)
+    final appUri = Platform.isIOS
+        ? Uri.parse(
+            "comgooglemaps://?daddr=$dst"
+            "${origin != null ? '&saddr=$origin' : ''}"
+            "&directionsmode=driving",
+          )
+        : Uri.parse(
+            "google.navigation:q=$dst"
+            "${origin != null ? '&origin=$origin' : ''}"
+            "&mode=d",
+          );
+
+    if (await canLaunchUrl(appUri)) {
+      await launchUrl(appUri);
+      return;
+    }
+
+    // Fallback — browser URL (always works, opens web Google Maps)
+    final webUri = Uri.parse(
       "https://www.google.com/maps/dir/?api=1"
-      "&destination=${widget.jobLat},${widget.jobLng}"
-      "$origin"
+      "&destination=$dst"
+      "${origin != null ? '&origin=$origin' : ''}"
       "&travelmode=driving",
     );
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      _showSnack("Could not open Google Maps");
-    }
+    await launchUrl(webUri, mode: LaunchMode.externalApplication);
   }
 
-  /// Opens the native geo intent — works with any maps app on the device.
+  /// Opens the device's default maps app via the standard geo: URI.
+  /// On Android this shows a chooser; on iOS falls back to Apple Maps.
   Future<void> _openNativeMaps() async {
-    final uri = Uri.parse(
-      "geo:${widget.jobLat},${widget.jobLng}"
-      "?q=${widget.jobLat},${widget.jobLng}(Job+Location)",
-    );
+    final dst = "${widget.jobLat},${widget.jobLng}";
 
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      _openGoogleMaps();
+    if (Platform.isIOS) {
+      // Apple Maps deep link
+      final appleUri = Uri.parse(
+        "https://maps.apple.com/?daddr=$dst&dirflg=d",
+      );
+      if (await canLaunchUrl(appleUri)) {
+        await launchUrl(appleUri, mode: LaunchMode.externalApplication);
+        return;
+      }
     }
+
+    // Android geo: intent — shows native maps chooser
+    final geoUri = Uri.parse(
+      "geo:$dst?q=$dst(Job+Location)",
+    );
+    if (await canLaunchUrl(geoUri)) {
+      await launchUrl(geoUri);
+      return;
+    }
+
+    // Last resort
+    await _openGoogleMaps();
   }
 
   void _showSnack(String msg) {
@@ -145,7 +176,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   List<Marker> get _markers {
     final markers = <Marker>[
-      // Job location — red pin
       Marker(
         point: _jobLatLng,
         width: 48,
@@ -155,7 +185,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
       ),
     ];
 
-    // Provider location — blue dot
     if (_myLocation != null) {
       markers.add(
         Marker(
@@ -211,12 +240,16 @@ class _NavigationScreenState extends State<NavigationScreen> {
       ),
       body: Stack(
         children: [
-          // ── OpenStreetMap ──────────────────────────────────────────────────
+          // ── Map ──────────────────────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _jobLatLng,
               initialZoom: 14,
+              onMapReady: () {
+                _mapReady = true;
+                if (_myLocation != null) _fitBounds();
+              },
             ),
             children: [
               TileLayer(
@@ -224,14 +257,8 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 userAgentPackageName: 'com.example.skill_renting_app',
                 maxZoom: 19,
               ),
-
-              // Dashed line from provider → job
               PolylineLayer(polylines: _polylines),
-
-              // Markers
               MarkerLayer(markers: _markers),
-
-              // OSM attribution
               const RichAttributionWidget(
                 attributions: [
                   TextSourceAttribution('OpenStreetMap contributors'),
@@ -240,7 +267,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
             ],
           ),
 
-          // ── Bottom navigation panel ────────────────────────────────────────
+          // ── Bottom panel ─────────────────────────────────────────────────
           Positioned(
             left: 0,
             right: 0,
@@ -263,107 +290,84 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Destination card
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.location_pin,
-                            color: Colors.red, size: 24),
+                  // Destination row
+                  Row(children: [
+                    Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.seekerName,
+                      child: const Icon(Icons.location_pin,
+                          color: Colors.red, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.seekerName,
                               style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              widget.jobAddress,
+                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          const SizedBox(height: 2),
+                          Text(widget.jobAddress,
                               style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 12,
-                              ),
+                                  color: Colors.grey.shade600, fontSize: 12),
                               maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
+                              overflow: TextOverflow.ellipsis),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ]),
 
                   const SizedBox(height: 6),
 
-                  // GPS coords
                   Padding(
                     padding: const EdgeInsets.only(left: 56),
                     child: Text(
                       "${widget.jobLat.toStringAsFixed(6)}, "
                       "${widget.jobLng.toStringAsFixed(6)}",
                       style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey.shade400,
-                        fontFamily: 'monospace',
-                      ),
+                          fontSize: 11,
+                          color: Colors.grey.shade400,
+                          fontFamily: 'monospace'),
                     ),
                   ),
 
                   const SizedBox(height: 20),
 
                   // Navigation buttons
-                  Row(
-                    children: [
-                      // Google Maps (primary)
-                      Expanded(
-                        flex: 3,
-                        child: ElevatedButton.icon(
-                          onPressed: _openGoogleMaps,
-                          icon: const Icon(Icons.navigation_rounded),
-                          label: const Text("Open in Google Maps"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue.shade700,
-                            foregroundColor: Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
+                  Row(children: [
+                    Expanded(
+                      flex: 3,
+                      child: ElevatedButton.icon(
+                        onPressed: _openGoogleMaps,
+                        icon: const Icon(Icons.navigation_rounded),
+                        label: const Text("Google Maps"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
-
-                      const SizedBox(width: 10),
-
-                      // Native maps fallback
-                      Expanded(
-                        flex: 2,
-                        child: OutlinedButton.icon(
-                          onPressed: _openNativeMaps,
-                          icon: const Icon(Icons.map_outlined),
-                          label: const Text("Maps App"),
-                          style: OutlinedButton.styleFrom(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton.icon(
+                        onPressed: _openNativeMaps,
+                        icon: const Icon(Icons.map_outlined),
+                        label: Text(Platform.isIOS ? "Apple Maps" : "Maps"),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ]),
 
                   if (_loadingMyLocation) ...[
                     const SizedBox(height: 10),
@@ -371,18 +375,12 @@ class _NavigationScreenState extends State<NavigationScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
                         const SizedBox(width: 8),
-                        Text(
-                          "Getting your location…",
-                          style: TextStyle(
-                            color: Colors.grey.shade500,
-                            fontSize: 12,
-                          ),
-                        ),
+                        Text("Getting your location…",
+                            style: TextStyle(
+                                color: Colors.grey.shade500, fontSize: 12)),
                       ],
                     ),
                   ],

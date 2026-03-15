@@ -19,6 +19,7 @@ const {
   verifyCompleteOtp,
   submitJobGps,
   skipJobGps,
+  markPaymentDone,
 } = require("../controllers/booking.controller");
 
 router.post("/",                         protect, createBooking);
@@ -38,6 +39,7 @@ router.put("/:id/begin",                protect, beginBooking);       // provide
 router.put("/:id/verify-begin",         protect, verifyBeginOtp);     // provider submits begin OTP → in_progress
 router.put("/:id/request-complete",     protect, requestComplete);    // provider triggers complete OTP (+ optional extra charges)
 router.put("/:id/verify-complete",      protect, verifyCompleteOtp);  // provider submits complete OTP → completed
+router.put("/:id/mark-paid",            protect, markPaymentDone);    // seeker marks payment done (dummy flow)
 
 // GPS
 router.put("/:id/gps",                  protect, submitJobGps);

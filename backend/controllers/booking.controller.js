@@ -104,11 +104,14 @@ exports.createBooking = async (req, res) => {
       user: skill.provider,
       title: "New Booking Request",
       message: "Someone requested your skill: " + skill.title,
+      type: "new_request",
+      bookingId: booking._id,
     });
 
     const provider = await User.findById(skill.provider);
     if (provider?.fcmToken) {
       await sendPush(provider.fcmToken, "New Booking", "Someone booked your skill", {
+        type: "new_request",
         bookingId: booking._id.toString(),
       });
     }
@@ -219,10 +222,15 @@ exports.acceptBooking = async (req, res) => {
             user: b.seeker,
             title: "Booking Rejected",
             message: "Your booking request was rejected because another request was accepted for the same slot.",
+            type: "booking_rejected",
+            bookingId: b._id,
           });
           const seeker = await User.findById(b.seeker);
           if (seeker?.fcmToken) {
-            await sendPush(seeker.fcmToken, "Booking Rejected", "Another request was accepted for the same slot");
+            await sendPush(seeker.fcmToken, "Booking Rejected", "Another request was accepted for the same slot", {
+              type: "booking_rejected",
+              bookingId: b._id.toString(),
+            });
           }
         })
       );
@@ -232,11 +240,16 @@ exports.acceptBooking = async (req, res) => {
       user: booking.seeker,
       title: "Booking Accepted",
       message: "Your booking was accepted",
+      type: "booking_accepted",
+      bookingId: booking._id,
     });
 
     const seeker = await User.findById(booking.seeker);
     if (seeker?.fcmToken) {
-      await sendPush(seeker.fcmToken, "Booking Accepted", "Your booking was accepted");
+      await sendPush(seeker.fcmToken, "Booking Accepted", "Your booking was accepted", {
+        type: "booking_accepted",
+        bookingId: booking._id.toString(),
+      });
     }
 
     // Auto-fill GPS if seeker has home GPS saved
@@ -270,11 +283,16 @@ exports.rejectBooking = async (req, res) => {
       user: booking.seeker,
       title: "Booking Rejected",
       message: "Your booking was rejected",
+      type: "booking_rejected",
+      bookingId: booking._id,
     });
 
     const seeker = await User.findById(booking.seeker);
     if (seeker?.fcmToken) {
-      await sendPush(seeker.fcmToken, "Booking Rejected", "Your booking was rejected");
+      await sendPush(seeker.fcmToken, "Booking Rejected", "Your booking was rejected", {
+        type: "booking_rejected",
+        bookingId: booking._id.toString(),
+      });
     }
 
     res.json(booking);
@@ -320,11 +338,16 @@ exports.completeBooking = async (req, res) => {
       user: booking.seeker,
       title: "Booking Completed",
       message: "Your booking was completed",
+      type: "booking_completed",
+      bookingId: booking._id,
     });
 
     const seeker = await User.findById(booking.seeker);
     if (seeker?.fcmToken) {
-      await sendPush(seeker.fcmToken, "Booking Completed", "Your booking was completed");
+      await sendPush(seeker.fcmToken, "Booking Completed", "Your booking was completed", {
+        type: "booking_completed",
+        bookingId: booking._id.toString(),
+      });
     }
 
     res.json(booking);
@@ -365,7 +388,8 @@ exports.beginBooking = async (req, res) => {
       await sendPush(
         seeker.fcmToken,
         "Provider has arrived!",
-        `Share OTP ${otp} with your provider to begin`
+        `Share OTP ${otp} with your provider to begin`,
+        { type: "begin_otp", bookingId: booking._id.toString() }
       );
     }
 
@@ -396,11 +420,16 @@ exports.verifyBeginOtp = async (req, res) => {
       user: booking.seeker,
       title: "Service Started",
       message: "Your service has started and is now in progress.",
+      type: "service_started",
+      bookingId: booking._id,
     });
 
     const seeker = await User.findById(booking.seeker);
     if (seeker?.fcmToken) {
-      await sendPush(seeker.fcmToken, "Service Started", "Your service is now in progress");
+      await sendPush(seeker.fcmToken, "Service Started", "Your service is now in progress", {
+        type: "service_started",
+        bookingId: booking._id.toString(),
+      });
     }
 
     res.json(booking);
@@ -447,7 +476,8 @@ exports.requestComplete = async (req, res) => {
       await sendPush(
         seeker.fcmToken,
         "Job Complete - Verify",
-        `Share OTP ${otp} with provider to confirm`
+        `Share OTP ${otp} with provider to confirm`,
+        { type: "complete_otp", bookingId: booking._id.toString() }
       );
     }
 
@@ -598,6 +628,52 @@ exports.toggleBlockedSlot = async (req, res) => {
     });
 
     res.status(201).json(blocked);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Mark Payment Done (dummy UPI flow) ─────────────────────────────────────────
+exports.markPaymentDone = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+    // Only the seeker who made the booking can mark it paid
+    if (booking.seeker.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+
+    if (booking.status !== "completed")
+      return res.status(400).json({ message: "Booking is not completed yet" });
+
+    if (booking.paymentStatus === "paid")
+      return res.status(400).json({ message: "Already paid" });
+
+    booking.paymentStatus = "paid";
+    await booking.save();
+
+    // Notify provider
+    const provider = await User.findById(booking.provider);
+    const seeker   = await User.findById(booking.seeker);
+
+    await Notification.create({
+      user:      booking.provider,
+      title:     "Payment Received",
+      message:   `${seeker?.name ?? "Seeker"} has completed payment of ₹${booking.totalAmount ?? booking.pricingSnapshot?.amount ?? 0}.`,
+      bookingId: booking._id,
+      type:      "payment",
+    });
+
+    if (provider?.fcmToken) {
+      await sendPush(
+        provider.fcmToken,
+        "Payment Received 💰",
+        `${seeker?.name ?? "Seeker"} paid ₹${booking.totalAmount ?? booking.pricingSnapshot?.amount ?? 0}.`,
+        { bookingId: booking._id.toString(), type: "payment" }
+      );
+    }
+
+    res.json({ message: "Payment marked as done", booking });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

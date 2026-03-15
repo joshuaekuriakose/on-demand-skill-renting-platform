@@ -5,6 +5,7 @@ import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import 'package:skill_renting_app/features/profile/profile_service.dart';
 import 'package:skill_renting_app/features/profile/models/profile_model.dart';
 import 'change_password_screen.dart';
+import 'package:skill_renting_app/features/reports/reports_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -230,12 +231,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _InfoTile(
                           icon: Icons.lock,
                           title: "Password",
-                          value: "••••••••",
+                          value: "Change your password",
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
                                 builder: (_) =>
                                     const ChangePasswordScreen()),
+                          ),
+                        ),
+                        _InfoTile(
+                          icon: Icons.bar_chart,
+                          title: "My Reports",
+                          value: "View and download reports",
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const ReportsScreen()),
                           ),
                         ),
                         const SizedBox(height: 30),

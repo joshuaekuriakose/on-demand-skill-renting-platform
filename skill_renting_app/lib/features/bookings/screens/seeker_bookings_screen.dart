@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:skill_renting_app/features/reviews/screens/review_screen.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import 'package:skill_renting_app/features/bookings/models/booking_model.dart';
@@ -137,6 +138,18 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
     }
   }
 
+  Future<void> _markPaid(String bookingId) async {
+    final ok = await BookingService.markPaymentDone(bookingId);
+    if (ok && mounted) {
+      setState(() {
+        final i = _bookings.indexWhere((b) => b.id == bookingId);
+        if (i != -1) {
+          _bookings[i] = _bookings[i].copyWith(paymentStatus: "paid");
+        }
+      });
+    }
+  }
+
   void _showDetailSheet(BookingModel b) {
     showModalBottomSheet(
       context: context,
@@ -165,6 +178,9 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
                             bookingId: b.id, seekerName: "Job Location")));
                 if (result == true && mounted) _loadBookings();
               }
+            : null,
+        onPay: b.status == "completed" && b.paymentStatus == "pending"
+            ? () => _markPaid(b.id)
             : null,
       ),
     );
@@ -394,12 +410,13 @@ class _SeekerBookingCard extends StatelessWidget {
 // Full detail bottom sheet (seeker view)
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _SeekerBookingDetailSheet extends StatelessWidget {
+class _SeekerBookingDetailSheet extends StatefulWidget {
   final BookingModel booking;
   final bool isBusy;
   final VoidCallback? onCancel;
   final VoidCallback? onReview;
   final VoidCallback? onShareGps;
+  final Future<void> Function()? onPay;
 
   const _SeekerBookingDetailSheet({
     required this.booking,
@@ -407,11 +424,31 @@ class _SeekerBookingDetailSheet extends StatelessWidget {
     this.onCancel,
     this.onReview,
     this.onShareGps,
+    this.onPay,
   });
 
   @override
+  State<_SeekerBookingDetailSheet> createState() => _SeekerBookingDetailSheetState();
+}
+
+class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
+  // Local state so payment UI updates without closing/reopening the sheet
+  late String _paymentStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _paymentStatus = widget.booking.paymentStatus;
+  }
+
+  void _onPaymentDone() {
+    setState(() => _paymentStatus = "paid");
+    widget.onPay?.call(); // notify parent to persist in list
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final b = booking;
+    final b = widget.booking;
     Color statusColor;
     switch (b.status) {
       case "requested":   statusColor = Colors.orange;       break;
@@ -594,16 +631,16 @@ class _SeekerBookingDetailSheet extends StatelessWidget {
                     const SizedBox(height: 28),
 
                     // ── Actions ────────────────────────────────────────────
-                    if (isBusy)
+                    if (widget.isBusy)
                       const Center(child: CircularProgressIndicator())
                     else
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           // GPS share
-                          if (onShareGps != null) ...[
+                          if (widget.onShareGps != null) ...[
                             ElevatedButton.icon(
-                              onPressed: onShareGps,
+                              onPressed: widget.onShareGps,
                               icon: const Icon(Icons.location_on),
                               label: const Text("Share GPS Location"),
                               style: ElevatedButton.styleFrom(
@@ -614,17 +651,15 @@ class _SeekerBookingDetailSheet extends StatelessWidget {
                             const SizedBox(height: 8),
                           ],
 
-                          // Payment (stub — works visually only)
+                          // ── Payment ──────────────────────────────────────
                           if (b.status == "completed" &&
-                              b.paymentStatus == "pending") ...[
+                              _paymentStatus == "pending") ...[
                             ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text("Payment coming soon!")),
-                                );
-                              },
+                              onPressed: () => _UpiChooser.show(
+                                context: context,
+                                booking: b,
+                                onPaid: _onPaymentDone,
+                              ),
                               icon: const Icon(Icons.payment),
                               label: Text(
                                   "Pay ₹${b.amountDue.toStringAsFixed(0)}"),
@@ -636,7 +671,7 @@ class _SeekerBookingDetailSheet extends StatelessWidget {
                             const SizedBox(height: 8),
                           ],
                           if (b.status == "completed" &&
-                              b.paymentStatus == "paid") ...[
+                              _paymentStatus == "paid") ...[
                             Container(
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               alignment: Alignment.center,
@@ -660,9 +695,9 @@ class _SeekerBookingDetailSheet extends StatelessWidget {
                           ],
 
                           // Review
-                          if (onReview != null)
+                          if (widget.onReview != null)
                             ElevatedButton.icon(
-                              onPressed: onReview,
+                              onPressed: widget.onReview,
                               icon: const Icon(Icons.star_outline),
                               label: const Text("Leave a Review"),
                               style: ElevatedButton.styleFrom(
@@ -679,10 +714,10 @@ class _SeekerBookingDetailSheet extends StatelessWidget {
                             ),
 
                           // Cancel
-                          if (onCancel != null) ...[
+                          if (widget.onCancel != null) ...[
                             const SizedBox(height: 8),
                             OutlinedButton(
-                              onPressed: onCancel,
+                              onPressed: widget.onCancel,
                               style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red,
                                   minimumSize: const Size.fromHeight(46)),
@@ -960,6 +995,406 @@ class _DetailRow extends StatelessWidget {
                 fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
                 color: subtle ? Colors.grey.shade500 : Colors.black87,
               )),
+        ),
+      ],
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// UPI App Chooser — dummy payment flow
+//
+// Shows a bottom sheet listing UPI apps installed on the device.
+// Tapping any app immediately shows a success dialog WITHOUT launching the
+// UPI app or processing any real transaction.
+//
+// ── Real payment integration (future) ────────────────────────────────────────
+// To implement real UPI payments, replace the `_onAppTapped` method with:
+//
+//   final upiUri = Uri.parse(
+//     "upi://pay"
+//     "?pa=MERCHANT_VPA@upi"          // merchant VPA
+//     "&pn=SkillRenting"
+//     "&am=${amount.toStringAsFixed(2)}"
+//     "&cu=INR"
+//     "&tn=Booking+Payment"
+//     "&tr=UNIQUE_TRANSACTION_REF",   // store this for verification
+//   );
+//   await launchUrl(upiUri);
+//   // Then poll your backend with the transaction ref to verify payment
+//   // via the UPI status API before marking paid.
+//
+// Packages to consider:
+//   - upi_india: ^3.0.1  (wraps Android UPI intent, gives success/failure callback)
+//   - razorpay_flutter    (full payment gateway — not free)
+//   - paytm_allinonesdk  (Paytm SDK)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ═════════════════════════════════════════════════════════════════════════════
+// UPI dummy payment — chooser + full bill receipt
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// REAL PAYMENT INTEGRATION (future):
+// Replace _onAppTapped body with:
+//
+//   final upiUri = Uri.parse(
+//     "upi://pay?pa=MERCHANT_VPA@upi&pn=SkillRenting"
+//     "&am=${booking.amountDue.toStringAsFixed(2)}&cu=INR"
+//     "&tn=Booking+Payment&tr=TXN_${booking.id}",
+//   );
+//   // Use package: upi_india ^3.0.1 for Android intent + callback
+//   // Verify transaction on backend with booking.id before marking paid
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _UpiApp {
+  final String name;
+  final IconData icon;
+  final Color color;
+  const _UpiApp(this.name, this.icon, this.color);
+}
+
+const _kUpiApps = [
+  _UpiApp("Google Pay",  Icons.g_mobiledata_rounded,   Color(0xFF4285F4)),
+  _UpiApp("PhonePe",     Icons.phone_android,           Color(0xFF5F259F)),
+  _UpiApp("Paytm",       Icons.account_balance_wallet,  Color(0xFF00BAF2)),
+  _UpiApp("BHIM",        Icons.account_balance,         Color(0xFF138808)),
+  _UpiApp("Amazon Pay",  Icons.shopping_bag_outlined,   Color(0xFFFF9900)),
+  _UpiApp("Other UPI",   Icons.payment,                 Color(0xFF607D8B)),
+];
+
+// Static helper — call from anywhere
+class _UpiChooser {
+  static Future<void> show({
+    required BuildContext context,
+    required BookingModel booking,
+    required VoidCallback onPaid,
+  }) {
+    return showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _UpiChooserSheet(booking: booking, onPaid: onPaid),
+    );
+  }
+}
+
+class _UpiChooserSheet extends StatefulWidget {
+  final BookingModel booking;
+  final VoidCallback onPaid;
+  const _UpiChooserSheet({required this.booking, required this.onPaid});
+
+  @override
+  State<_UpiChooserSheet> createState() => _UpiChooserSheetState();
+}
+
+class _UpiChooserSheetState extends State<_UpiChooserSheet> {
+  String? _selected;
+  bool _processing = false;
+
+  Future<void> _onAppTapped(_UpiApp app) async {
+    if (_processing) return;
+    setState(() { _selected = app.name; _processing = true; });
+
+    // Dummy: simulate UPI response delay
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+
+    Navigator.pop(context); // close chooser
+    _showBillDialog(app.name);
+  }
+
+  void _showBillDialog(String appName) {
+    final b = widget.booking;
+    final txnId = "TXN${DateTime.now().millisecondsSinceEpoch}";
+    final baseAmount = b.price;
+    final extra = b.extraCharges;
+    final total = b.amountDue;
+    final hasExtra = extra > 0;
+
+    // Duration string
+    String duration;
+    final diff = b.endDate.difference(b.startDate);
+    if (b.pricingUnit == "hour") {
+      final hrs = diff.inMinutes / 60.0;
+      duration = "${hrs.toStringAsFixed(1)} hr${hrs == 1 ? '' : 's'}";
+    } else {
+      final days = diff.inDays + 1;
+      duration = "$days day${days == 1 ? '' : 's'}";
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dCtx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Header ──────────────────────────────────────────────
+                Container(
+                  width: 64, height: 64,
+                  decoration: const BoxDecoration(
+                      color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+                  child: const Icon(Icons.check_circle,
+                      color: Color(0xFF2E7D32), size: 40),
+                ),
+                const SizedBox(height: 12),
+                const Text("Payment Successful!",
+                    style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
+                Text("Paid via $appName",
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.grey.shade500)),
+
+                const SizedBox(height: 20),
+                Divider(color: Colors.grey.shade200),
+                const SizedBox(height: 12),
+
+                // ── Bill title ───────────────────────────────────────────
+                Row(children: [
+                  Icon(Icons.receipt_long,
+                      size: 16, color: Colors.indigo.shade400),
+                  const SizedBox(width: 6),
+                  const Text("Bill Receipt",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14)),
+                ]),
+                const SizedBox(height: 14),
+
+                // ── Provider ─────────────────────────────────────────────
+                _BillRow(label: "Provider", value: b.providerName),
+                const SizedBox(height: 6),
+
+                // ── Service ──────────────────────────────────────────────
+                _BillRow(label: "Service", value: b.skillTitle),
+                const SizedBox(height: 6),
+
+                // ── Duration ─────────────────────────────────────────────
+                _BillRow(label: "Duration", value: duration),
+                const SizedBox(height: 6),
+
+                // ── Slot ─────────────────────────────────────────────────
+                _BillRow(label: "Slot", value: b.slotRangeFormatted),
+                const SizedBox(height: 12),
+
+                Divider(color: Colors.grey.shade200),
+                const SizedBox(height: 10),
+
+                // ── Base amount ──────────────────────────────────────────
+                _BillRow(
+                  label: "Base rate (${b.pricingUnit})",
+                  value: "₹${baseAmount.toStringAsFixed(0)}",
+                ),
+
+                // ── Extra charges ────────────────────────────────────────
+                if (hasExtra) ...[
+                  const SizedBox(height: 6),
+                  _BillRow(
+                    label: "Extra time charges",
+                    value: "+ ₹${extra.toStringAsFixed(0)}",
+                    valueColor: Colors.orange.shade700,
+                  ),
+                ],
+
+                const SizedBox(height: 10),
+                Divider(color: Colors.grey.shade200),
+                const SizedBox(height: 10),
+
+                // ── Total ────────────────────────────────────────────────
+                Row(children: [
+                  const Text("Total Paid",
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Spacer(),
+                  Text("₹${total.toStringAsFixed(0)}",
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Color(0xFF2E7D32))),
+                ]),
+
+                const SizedBox(height: 14),
+                Divider(color: Colors.grey.shade200),
+                const SizedBox(height: 8),
+
+                // ── Transaction ID ───────────────────────────────────────
+                Row(children: [
+                  Icon(Icons.tag, size: 13, color: Colors.grey.shade400),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(txnId,
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey.shade400,
+                            fontFamily: 'monospace')),
+                  ),
+                ]),
+
+                const SizedBox(height: 20),
+
+                // ── Done button ──────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(dCtx); // close bill dialog
+                      widget.onPaid();     // update local state in detail sheet
+                    },
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E7D32),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                    child: const Text("Done",
+                        style: TextStyle(fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = widget.booking.amountDue;
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          // Header
+          Row(children: [
+            const Icon(Icons.lock_outline, size: 18, color: Colors.green),
+            const SizedBox(width: 6),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text("Pay via UPI",
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold)),
+              Text("Amount: ₹${amount.toStringAsFixed(0)}",
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade600)),
+            ]),
+          ]),
+          const SizedBox(height: 4),
+          Text("Choose your UPI app",
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          const SizedBox(height: 16),
+
+          // App grid
+          GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.1,
+            children: _kUpiApps.map((app) {
+              final isLoading = _selected == app.name && _processing;
+              return InkWell(
+                onTap: _processing ? null : () => _onAppTapped(app),
+                borderRadius: BorderRadius.circular(14),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: isLoading
+                        ? app.color.withOpacity(0.08)
+                        : Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: isLoading
+                            ? app.color
+                            : Colors.grey.shade200,
+                        width: isLoading ? 1.5 : 1),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      isLoading
+                          ? SizedBox(
+                              width: 28, height: 28,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: app.color))
+                          : Icon(app.icon, size: 32, color: app.color),
+                      const SizedBox(height: 6),
+                      Text(app.name,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.security, size: 13, color: Colors.grey.shade400),
+            const SizedBox(width: 4),
+            Text("Secured by UPI",
+                style: TextStyle(
+                    fontSize: 11, color: Colors.grey.shade400)),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bill row widget
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BillRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  const _BillRow({required this.label, required this.value, this.valueColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 13, color: Colors.grey.shade600)),
+        const Spacer(),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: valueColor ?? Colors.black87)),
         ),
       ],
     );

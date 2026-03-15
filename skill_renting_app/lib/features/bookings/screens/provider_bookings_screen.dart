@@ -8,6 +8,10 @@ import 'package:skill_renting_app/features/bookings/screens/navigation_screen.da
 class ProviderBookingsScreen extends StatefulWidget {
   const ProviderBookingsScreen({super.key});
 
+  // Public static — shared with MainDashboard so both screens read/write
+  // the same seen-bookings state without needing a state management package.
+  static final Set<String> seenBookingIds = {};
+
   @override
   State<ProviderBookingsScreen> createState() =>
       _ProviderBookingsScreenState();
@@ -20,6 +24,11 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
   final Set<String> _busy = {};
   late TabController _tabController;
 
+  // Badge count = active bookings whose IDs are NOT in this set.
+  // Defined as static on ProviderBookingsScreen (widget class) for cross-screen access.
+
+  static const _badgeStatuses = {"accepted", "in_progress", "completed"};
+
   @override
   void initState() {
     super.initState();
@@ -31,6 +40,15 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Call this when the Bookings tab is opened — marks all current active IDs as seen.
+  void _markBookingsSeen() {
+    final activeIds = _bookings
+        .where((b) => _badgeStatuses.contains(b.status))
+        .map((b) => b.id)
+        .toSet();
+    setState(() => ProviderBookingsScreen.seenBookingIds.addAll(activeIds));
   }
 
   Future<void> _loadBookings() async {
@@ -361,6 +379,16 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
   List<BookingModel> get _otherBookings =>
       _bookings.where((b) => b.status != "requested").toList();
 
+  // Only these statuses count toward the Bookings badge
+  List<BookingModel> get _activeBookings => _bookings
+      .where((b) => _badgeStatuses.contains(b.status))
+      .toList();
+
+  // Badge count = active bookings the user hasn't seen yet
+  int get _unseenBookingsCount => _bookings
+      .where((b) => _badgeStatuses.contains(b.status) && !ProviderBookingsScreen.seenBookingIds.contains(b.id))
+      .length;
+
   Map<String, _SkillGroup> get _requestsBySkill {
     final map = <String, _SkillGroup>{};
     for (final b in _requests) {
@@ -395,6 +423,9 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
         title: const Text("Job Queue"),
         bottom: TabBar(
           controller: _tabController,
+          onTap: (index) {
+            if (index == 1) _markBookingsSeen();
+          },
           tabs: [
             Tab(
               child: Row(
@@ -413,9 +444,9 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text("Bookings"),
-                  if (_otherBookings.isNotEmpty) ...[
+                  if (_unseenBookingsCount > 0) ...[
                     const SizedBox(width: 6),
-                    _Badge(_otherBookings.length, Colors.blue),
+                    _Badge(_unseenBookingsCount, Colors.blue),
                   ],
                 ],
               ),
@@ -503,6 +534,22 @@ class _RequestsTab extends StatelessWidget {
     required this.onRefresh,
   });
 
+  /// Returns the id of the booking with the smallest distanceKmEstimate
+  /// across ALL groups. Returns null if no booking has a distance set.
+  String? _closestId() {
+    BookingModel? closest;
+    for (final g in groups.values) {
+      for (final b in g.bookings) {
+        if (b.distanceKmEstimate == null) continue;
+        if (closest == null ||
+            b.distanceKmEstimate! < closest.distanceKmEstimate!) {
+          closest = b;
+        }
+      }
+    }
+    return closest?.id;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (groups.isEmpty) {
@@ -510,6 +557,7 @@ class _RequestsTab extends StatelessWidget {
           child: Text("No pending requests", style: TextStyle(color: Colors.grey)));
     }
     final groupList = groups.values.toList();
+    final closestId = _closestId();
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView.builder(
@@ -523,6 +571,7 @@ class _RequestsTab extends StatelessWidget {
                   .map((b) => _RequestCard(
                         booking: b,
                         isBusy: busy.contains(b.id),
+                        isClosest: b.id == closestId,
                         onAccept: () => onAccept(b.id),
                         onReject: () => onReject(b.id),
                         onTap: () => onTap(b),
@@ -533,6 +582,7 @@ class _RequestsTab extends StatelessWidget {
           return _SkillGroupTile(
             group: group,
             busy: busy,
+            closestId: closestId,
             onAccept: onAccept,
             onReject: onReject,
             onTap: onTap,
@@ -550,6 +600,7 @@ class _RequestsTab extends StatelessWidget {
 class _SkillGroupTile extends StatefulWidget {
   final _SkillGroup group;
   final Set<String> busy;
+  final String? closestId;
   final void Function(String) onAccept;
   final void Function(String) onReject;
   final void Function(BookingModel) onTap;
@@ -560,6 +611,7 @@ class _SkillGroupTile extends StatefulWidget {
     required this.onAccept,
     required this.onReject,
     required this.onTap,
+    this.closestId,
   });
 
   @override
@@ -614,6 +666,7 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
                   .map((b) => _RequestCard(
                         booking: b,
                         isBusy: widget.busy.contains(b.id),
+                        isClosest: b.id == widget.closestId,
                         onAccept: () => widget.onAccept(b.id),
                         onReject: () => widget.onReject(b.id),
                         onTap: () => widget.onTap(b),
@@ -636,6 +689,7 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
 class _RequestCard extends StatelessWidget {
   final BookingModel booking;
   final bool isBusy;
+  final bool isClosest;
   final VoidCallback onAccept;
   final VoidCallback onReject;
   final VoidCallback onTap;
@@ -647,22 +701,32 @@ class _RequestCard extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onTap,
+    this.isClosest = false,
     this.nested = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final b = booking;
+    final hasDistance = b.distanceKmEstimate != null;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(nested ? 0 : 14),
       child: Container(
         margin: nested ? EdgeInsets.zero : const EdgeInsets.only(bottom: 10),
         decoration: nested
-            ? BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade100)))
+            ? BoxDecoration(
+                border: Border(top: BorderSide(color: Colors.grey.shade100)),
+                // Subtle green tint on closest even when nested
+                color: isClosest ? Colors.green.shade50.withOpacity(0.5) : null,
+              )
             : BoxDecoration(
-                color: Colors.white,
+                color: isClosest ? Colors.green.shade50 : Colors.white,
                 borderRadius: BorderRadius.circular(14),
+                border: isClosest
+                    ? Border.all(color: Colors.green.shade200, width: 1.5)
+                    : null,
                 boxShadow: [
                   BoxShadow(
                       color: Colors.black.withOpacity(0.05),
@@ -674,43 +738,133 @@ class _RequestCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
+              // Left accent bar
               Container(
-                width: 4, height: 50,
+                width: 4,
+                height: 80,
                 decoration: BoxDecoration(
-                    color: Colors.orange, borderRadius: BorderRadius.circular(2)),
+                    color: isClosest ? Colors.green : Colors.orange,
+                    borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(width: 12),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // ── Name + Closest badge ────────────────────────────────
                     Row(children: [
                       const Icon(Icons.person_outline, size: 15, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Text(b.seekerName,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 14)),
-                      const Spacer(),
+                      Expanded(
+                        child: Text(b.seekerName,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14)),
+                      ),
+                      if (isClosest) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade600,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.near_me, size: 11, color: Colors.white),
+                              SizedBox(width: 3),
+                              Text("Closest",
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
                     ]),
+
                     const SizedBox(height: 4),
+
+                    // ── Locality  •  ~X.X km ───────────────────────────────
                     Row(children: [
                       const Icon(Icons.location_on, size: 13, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Text(b.jobDistrictLabel,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Expanded(
+                        child: Text(
+                          () {
+                            final loc = b.jobAddress?["locality"]
+                                    ?.toString()
+                                    .trim() ??
+                                "";
+                            final dist = hasDistance
+                                ? "~${b.distanceKmEstimate!.toStringAsFixed(1)} km"
+                                : "";
+                            if (loc.isNotEmpty && dist.isNotEmpty) {
+                              return "$loc  •  $dist";
+                            } else if (loc.isNotEmpty) {
+                              return loc;
+                            } else if (dist.isNotEmpty) {
+                              return dist;
+                            }
+                            return "Location not set";
+                          }(),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isClosest && hasDistance
+                                ? Colors.green.shade700
+                                : Colors.grey.shade600,
+                            fontWeight: isClosest && hasDistance
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ]),
+
                     const SizedBox(height: 3),
+
+                    // ── District ───────────────────────────────────────────
+                    Row(children: [
+                      const Icon(Icons.map_outlined, size: 13, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          b.jobDistrictLabel,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.grey),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ]),
+
+                    const SizedBox(height: 3),
+
+                    // ── Date • Slot ────────────────────────────────────────
                     Row(children: [
                       const Icon(Icons.access_time, size: 13, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Text(b.slotRangeFormatted,
-                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Expanded(
+                        child: Text(
+                          b.slotRangeFormatted,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.grey),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ]),
                   ],
                 ),
               ),
+
               const SizedBox(width: 8),
+
+              // Accept / Reject buttons
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: isBusy

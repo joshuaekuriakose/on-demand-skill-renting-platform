@@ -23,21 +23,20 @@ const notificationSchema = mongoose.Schema(
       default: false,
     },
 
-    // ── Used for in-app deep linking and action routing ───────────────────────
-    // Values: "gps_required" | "gps_provided" | "booking_accepted" |
-    //         "booking_rejected" | "booking_completed" | "new_booking" | "general"
+    // Routing — tells the app which screen to open on tap
+    // Values: new_request | booking_accepted | booking_rejected |
+    //         booking_completed | begin_otp | complete_otp |
+    //         service_started | payment
     type: {
       type: String,
-      default: "general",
+      default: null,
     },
 
-    // The booking this notification relates to (if any)
     bookingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
       default: null,
     },
-    // ─────────────────────────────────────────────────────────────────────────
   },
   {
     timestamps: true,

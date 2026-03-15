@@ -33,10 +33,37 @@ class _MainDashboardState extends State<MainDashboard> {
   int _mySkillsCount = 0;
   bool _loadingActivity = true;
 
+  static const _activeBadgeStatuses = {"accepted", "in_progress", "completed"};
+
+  // Activity cards — "Active" = accepted only, "Pending" = requested only
   int get _activeBookings =>
       _allBookings.where((b) => b.status == "accepted").length;
   int get _pendingBookings =>
       _allBookings.where((b) => b.status == "requested").length;
+
+  // Single static set shared with ProviderBookingsScreen so both screens
+  // read and write the same seen state.
+  static final Set<String> _seenRequestIds = {};
+
+  int get _unseenRequestsCount => _allBookings
+      .where((b) => b.status == "requested" && !_seenRequestIds.contains(b.id))
+      .length;
+
+  int get _unseenBookingsCount => _allBookings
+      .where((b) => _activeBadgeStatuses.contains(b.status) &&
+          !ProviderBookingsScreen.seenBookingIds.contains(b.id))
+      .length;
+
+  int get _dashboardRequestsBadge => _unseenRequestsCount + _unseenBookingsCount;
+
+  void _markRequestsSeen() {
+    setState(() {
+      _seenRequestIds.addAll(
+          _allBookings.where((b) => b.status == "requested").map((b) => b.id));
+      ProviderBookingsScreen.seenBookingIds.addAll(
+          _allBookings.where((b) => _activeBadgeStatuses.contains(b.status)).map((b) => b.id));
+    });
+  }
 
   String _getGreeting() {
     final h = DateTime.now().hour;
@@ -171,11 +198,14 @@ class _MainDashboardState extends State<MainDashboard> {
               IconButton(
                 icon: const Icon(Icons.notifications),
                 onPressed: () async {
+                  // Clear badge immediately — feels instant
+                  setState(() => _unreadCount = 0);
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
                         builder: (_) => const NotificationScreen()),
                   );
+                  // Re-fetch in case new ones arrived while screen was open
                   _loadNotificationCount();
                 },
               ),
@@ -459,17 +489,22 @@ class _MainDashboardState extends State<MainDashboard> {
             ),
             _DashboardIcon(
               icon: Icons.add_business,
-              label: "Services",
+              label: "My Skills",
               onTap: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const MySkillsScreen())),
             ),
             _DashboardIcon(
               icon: Icons.list_alt,
               label: "Requests",
-              onTap: () => Navigator.push(
+              badge: _dashboardRequestsBadge,
+              onTap: () {
+                _markRequestsSeen();
+                Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => const ProviderBookingsScreen())),
+                      builder: (_) => const ProviderBookingsScreen()),
+                ).then((_) => _loadActivity());
+              },
             ),
           ],
         ),
@@ -762,12 +797,14 @@ class _DashboardIcon extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final int badge; // 0 = hidden
 
   const _DashboardIcon({
     super.key,
     required this.icon,
     required this.label,
     required this.onTap,
+    this.badge = 0,
   });
 
   @override
@@ -786,14 +823,41 @@ class _DashboardIcon extends StatelessWidget {
                 offset: const Offset(0, 3)),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
           children: [
-            Icon(icon, size: 26, color: Theme.of(context).primaryColor),
-            const SizedBox(height: 8),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600)),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 26, color: Theme.of(context).primaryColor),
+                  const SizedBox(height: 8),
+                  Text(label,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            if (badge > 0)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10)),
+                  constraints:
+                      const BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Text(
+                    badge > 9 ? "9+" : "$badge",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
