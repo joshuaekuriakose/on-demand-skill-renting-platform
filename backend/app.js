@@ -19,6 +19,8 @@ const userRoutes         = require("./routes/user.routes");
 const utilsRoutes        = require("./routes/utils.routes");
 const notificationRoutes = require("./routes/notification.routes");
 const reportRoutes       = require("./routes/report.routes");
+const messageRoutes      = require("./routes/message.routes");
+const adminRoutes        = require("./routes/admin.routes");
 
 app.use("/api/auth",          authRoutes);
 app.use("/api/skills",        skillRoutes);
@@ -28,6 +30,8 @@ app.use("/api/users",         userRoutes);
 app.use("/api/utils",         utilsRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/reports",       reportRoutes);
+app.use("/api/admin",         adminRoutes);
+app.use("/api/messages",      messageRoutes);
 
 // Start scheduled report generation
 require("./utils/scheduler");

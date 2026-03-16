@@ -195,12 +195,27 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   }
 
   bool _isSlotLocked(DateTime slotStart, DateTime slotEnd) {
+    // Lock any slot whose start time is in the past
+    if (slotStart.isBefore(DateTime.now())) return true;
+
+    // Lock slots that overlap with already-booked ranges
     for (var range in occupiedRanges) {
       if (range["start"]!.isBefore(slotEnd) &&
           range["end"]!.isAfter(slotStart)) {
         return true;
       }
     }
+    return false;
+  }
+
+  /// Returns true if booking THIS slot right now would put the seeker
+  /// inside the cancellation-penalty window at the time of booking.
+  /// Hourly: booked within 30 min of slot start.
+  /// Daily:  booked within 6 hrs of slot start (slots start at 07:00).
+  bool _isInPenaltyWindow(DateTime slotStart) {
+    final diff = slotStart.difference(DateTime.now());
+    if (widget.pricingUnit == "hour") return diff.inMinutes < 30 && diff.inSeconds > 0;
+    if (widget.pricingUnit == "day")  return diff.inMinutes < 360 && diff.inSeconds > 0;
     return false;
   }
 
@@ -240,6 +255,8 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                         (slotStart == null || slotEnd == null)
                             ? true
                             : _isSlotLocked(slotStart, slotEnd);
+                    final inPenalty = !isLocked && slotStart != null
+                        && _isInPenaltyWindow(slotStart);
                     return GestureDetector(
                       onTap: isLocked
                           ? null
@@ -250,24 +267,44 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                               ? Colors.grey[400]
                               : selectedSlot == slot
                                   ? Colors.indigo
-                                  : Colors.grey[200],
+                                  : inPenalty
+                                      ? Colors.orange.shade100
+                                      : Colors.grey[200],
                           borderRadius: BorderRadius.circular(8),
+                          border: inPenalty && selectedSlot != slot
+                              ? Border.all(color: Colors.orange.shade400, width: 1.5)
+                              : null,
                         ),
-                        child: Center(
-                          child: Text(
-                            widget.pricingUnit == "hour"
-                                ? slotStr
-                                : slotStart != null
-                                    ? DateFormat('dd MMM').format(slotStart)
-                                    : slotStr,
-                            style: TextStyle(
-                              color: isLocked
-                                  ? Colors.black38
-                                  : selectedSlot == slot
-                                      ? Colors.white
-                                      : Colors.black,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              widget.pricingUnit == "hour"
+                                  ? slotStr
+                                  : slotStart != null
+                                      ? DateFormat('dd MMM').format(slotStart)
+                                      : slotStr,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: isLocked
+                                    ? Colors.black38
+                                    : selectedSlot == slot
+                                        ? Colors.white
+                                        : Colors.black87,
+                              ),
                             ),
-                          ),
+                            if (inPenalty) ...[
+                              const SizedBox(height: 2),
+                              Text("50% penalty",
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: selectedSlot == slot
+                                          ? Colors.white70
+                                          : Colors.orange.shade800,
+                                      fontWeight: FontWeight.w500)),
+                            ],
+                          ],
                         ),
                       ),
                     );
@@ -392,6 +429,88 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Penalty warning note ────────────────────────────
+                  if (_isInPenaltyWindow(start)) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.orange.shade300),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Colors.orange.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("Cancellation Penalty Applies",
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Colors.orange.shade800)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  widget.pricingUnit == "hour"
+                                      ? "You are booking within 30 minutes of the slot start. "
+                                        "If you cancel, a 50% penalty will apply."
+                                      : "You are booking within 6 hours of the slot start. "
+                                        "If you cancel, a 50% penalty will apply.",
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange.shade900,
+                                      height: 1.4),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // ── Cancellation policy note (always shown) ──────────────
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade100),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Note: Cancellation Policy",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: Colors.blue.shade800)),
+                        const SizedBox(height: 4),
+                        if (widget.pricingUnit == "hour")
+                          Text(
+                            "• Cancelling within 30 minutes of the slot start will incur a 50% penalty of the booking rate.",
+                            style: TextStyle(fontSize: 11, color: Colors.blue.shade700, height: 1.4),
+                          ),
+                        if (widget.pricingUnit == "day") ...[
+                          Text(
+                            "• Cancelling within 6 hours of the slot start will incur a 50% penalty of the daily rate.",
+                            style: TextStyle(fontSize: 11, color: Colors.blue.shade700, height: 1.4),
+                          ),
+                          Text(
+                            "• Daily job slots run from 7:00 AM to 7:00 AM (next day).",
+                            style: TextStyle(fontSize: 11, color: Colors.blue.shade700, height: 1.4),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
                   // Description
                   TextField(
                     controller: descCtrl,

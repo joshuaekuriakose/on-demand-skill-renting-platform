@@ -140,6 +140,7 @@ class _SkillRentingAppState extends State<SkillRentingApp> {
       NotificationRouter.navigate(
         navigatorState: navigatorKey.currentState,
         type: type,
+        data: Map<String, dynamic>.from(message.data),
       );
     });
 
@@ -147,10 +148,12 @@ class _SkillRentingAppState extends State<SkillRentingApp> {
     FirebaseMessaging.instance.getInitialMessage().then((message) {
       if (message != null) {
         final type = message.data['type'] as String?;
+        final msgData = Map<String, dynamic>.from(message.data);
         Future.delayed(const Duration(milliseconds: 500), () {
           NotificationRouter.navigate(
             navigatorState: navigatorKey.currentState,
             type: type,
+            data: msgData,
           );
         });
       }

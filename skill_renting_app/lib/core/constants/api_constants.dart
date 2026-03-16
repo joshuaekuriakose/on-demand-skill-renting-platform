@@ -3,7 +3,7 @@ class ApiConstants {
   //static const String baseUrl = "http://localhost:5000/api";
 
   // For Android emulator
-  static const String baseUrl = "http://10.0.2.2:5000/api";
+  //static const String baseUrl = "http://10.0.2.2:5000/api";
 
    // For Android physical phone
 
@@ -14,5 +14,5 @@ class ApiConstants {
    //static const String baseUrl = "http://192.168.81.96:5000/api";
 
     // College WiFi
-   //static const String baseUrl = "http://10.10.157.246:5000/api";
+   static const String baseUrl = "http://10.10.157.246:5000/api";
 }

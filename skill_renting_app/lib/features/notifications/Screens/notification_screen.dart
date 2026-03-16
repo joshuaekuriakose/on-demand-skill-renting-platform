@@ -40,10 +40,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
         }
       });
     }
-    final type = n["type"] as String?;
+    final type      = n["type"] as String?;
+    final bookingId = n["bookingId"]?.toString();
     NotificationRouter.navigate(
       navigatorState: Navigator.of(context),
       type: type,
+      data: bookingId != null ? {"bookingId": bookingId} : null,
     );
   }
 

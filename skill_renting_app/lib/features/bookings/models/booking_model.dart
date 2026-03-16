@@ -4,6 +4,8 @@ class BookingModel {
   final String skillTitle;
   final String seekerName;
   final String providerName;
+  final String seekerId;
+  final String providerId;
   final String skillId;
   final String pricingUnit;
   final double price; // base price from pricingSnapshot.amount
@@ -40,6 +42,8 @@ class BookingModel {
     required this.skillTitle,
     required this.seekerName,
     required this.providerName,
+    this.seekerId  = "",
+    this.providerId = "",
     required this.skillId,
     required this.pricingUnit,
     required this.price,
@@ -79,6 +83,8 @@ class BookingModel {
       skillTitle: skillTitle,
       seekerName: seekerName,
       providerName: providerName,
+      seekerId:   seekerId,
+      providerId: providerId,
       skillId: skillId,
       pricingUnit: pricingUnit,
       price: price,
@@ -151,6 +157,8 @@ class BookingModel {
       price:        basePrice,
       seekerName:   seeker is Map   ? seeker["name"]   ?? "Unknown" : "Unknown",
       providerName: providerMap != null ? providerMap["name"] ?? "Unknown" : "Unknown",
+      seekerId:     seeker is Map   ? (seeker["_id"] ?? "").toString()   : "",
+      providerId:   providerMap != null ? (providerMap["_id"] ?? "").toString() : "",
       isReviewed: json["isReviewed"] == true,
       createdAt: DateTime.parse(json["createdAt"]).toLocal(),
       startDate: parsedStart,

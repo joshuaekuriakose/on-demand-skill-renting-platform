@@ -4,6 +4,8 @@ import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import '../models/booking_model.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/features/bookings/screens/navigation_screen.dart';
+import 'package:skill_renting_app/features/chat/chat_screen.dart';
+import 'package:skill_renting_app/core/services/auth_storage.dart' as _authSt;
 
 class ProviderBookingsScreen extends StatefulWidget {
   const ProviderBookingsScreen({super.key});
@@ -507,6 +509,20 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
             : null,
         onNavigate: b.hasGps
             ? () { Navigator.pop(context); _navigate(b); }
+            : null,
+        onMessage: (b.status == "accepted" || b.status == "in_progress")
+            ? () async {
+                Navigator.pop(context);
+                final myId = await _authSt.AuthStorage.getUserId();
+                if (!mounted) return;
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    bookingId:       b.id,
+                    otherPersonName: b.seekerName,
+                    currentUserId:   myId,
+                  ),
+                ));
+              }
             : null,
       ),
     );
@@ -1102,6 +1118,7 @@ class _BookingDetailSheet extends StatelessWidget {
   final VoidCallback? onBegin;
   final VoidCallback? onComplete;
   final VoidCallback? onNavigate;
+  final VoidCallback? onMessage;
 
   const _BookingDetailSheet({
     required this.booking,
@@ -1111,6 +1128,7 @@ class _BookingDetailSheet extends StatelessWidget {
     this.onBegin,
     this.onComplete,
     this.onNavigate,
+    this.onMessage,
   });
 
   @override
@@ -1292,6 +1310,18 @@ class _BookingDetailSheet extends StatelessWidget {
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
                                   minimumSize: const Size.fromHeight(48)),
+                            ),
+                          ],
+                          if (onMessage != null) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: onMessage,
+                              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                              label: const Text("Message Customer"),
+                              style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.teal,
+                                  side: const BorderSide(color: Colors.teal),
+                                  minimumSize: const Size.fromHeight(46)),
                             ),
                           ],
                         ],

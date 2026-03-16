@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import '../auth_service.dart';
 import 'register_screen.dart';
 import '../../../core/services/auth_storage.dart';
-//import '../../bookings/screens/seeker_dashboard.dart';
-//import '../../bookings/screens/provider_dashboard.dart';
 import 'package:skill_renting_app/features/dashboard/main_dashboard.dart';
+import 'package:skill_renting_app/features/admin/admin_dashboard.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
@@ -16,157 +15,178 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isLoading = false;
+  final _emailCtrl    = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _isLoading     = false;
+  bool _obscure       = true;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
-  if (_isLoading) return;
+    if (_isLoading) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
 
-  FocusScope.of(context).unfocus();
+    try {
+      final user = await AuthService.login(
+        _emailCtrl.text.trim(),
+        _passwordCtrl.text.trim(),
+      );
 
-  setState(() => _isLoading = true);
+      if (user == null) {
+        _showError("Invalid email or password");
+        return;
+      }
 
-  try {
-    final user = await AuthService.login(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
-    );
+      // Save FCM token (non-admin only)
+      if (user.role != "admin") {
+        final fcmToken = await FirebaseMessaging.instance.getToken();
+        if (fcmToken != null) {
+          final token = await AuthStorage.getToken();
+          if (token != null) {
+            await ApiService.post(
+              "/users/save-token",
+              {"token": fcmToken},
+              token: token,
+            );
+          }
+        }
+      }
 
-    if (user == null) {
-      _showError("Invalid email or password");
-      return;
-    }
+      if (!mounted) return;
 
-    // Save FCM token
-    final fcmToken = await FirebaseMessaging.instance.getToken();
-
-    if (fcmToken != null) {
-      final token = await AuthStorage.getToken();
-
-      if (token != null) {
-        await ApiService.post(
-          "/users/save-token",
-          {
-            "token": fcmToken,
-          },
-          token: token,
+      // Route based on role
+      if (user.role == "admin") {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminDashboard()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainDashboard()),
         );
       }
-    }
-
-    if (!mounted) return;
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const MainDashboard(),
-      ),
-    );
-
-  } catch (e) {
-    _showError("Login failed. Try again.");
-  } finally {
-    if (mounted) {
-      setState(() => _isLoading = false);
+    } catch (e) {
+      _showError("Login failed. Please try again.");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
-}
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Login")),
+      backgroundColor: Colors.grey.shade50,
       body: Center(
-  child: SingleChildScrollView(
-    padding: const EdgeInsets.all(20),
-    child: Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-
-            const Icon(
-              Icons.lock_outline,
-              size: 60,
-              color: Colors.indigo,
-            ),
-
-            const SizedBox(height: 16),
-
-            const Text(
-              "Welcome Back",
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Logo / brand mark
+              Container(
+                width: 80, height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.indigo,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.handshake,
+                    size: 44, color: Colors.white),
               ),
-            ),
+              const SizedBox(height: 24),
+              const Text("Welcome Back",
+                  style: TextStyle(
+                      fontSize: 26, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              Text("Sign in to continue",
+                  style: TextStyle(color: Colors.grey.shade500)),
+              const SizedBox(height: 32),
 
-            const SizedBox(height: 6),
-
-            const Text(
-              "Login to continue",
-              style: TextStyle(color: Colors.grey),
-            ),
-
-            const SizedBox(height: 24),
-
-            TextField(
-              controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: "Email",
-                prefixIcon: Icon(Icons.email),
+              // Card
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6))
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: "Email",
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordCtrl,
+                      obscureText: _obscure,
+                      decoration: InputDecoration(
+                        labelText: "Password",
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(_obscure
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () =>
+                              setState(() => _obscure = !_obscure),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _login,
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22, height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white))
+                            : const Text("Sign In",
+                                style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: "Password",
-                prefixIcon: Icon(Icons.lock),
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, "/register"),
+                child: const Text("Don't have an account? Register"),
               ),
-            ),
-
-            const SizedBox(height: 24),
-
-            ElevatedButton(
-              onPressed: _isLoading ? null : _login,
-              child: _isLoading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("Login"),
-            ),
-
-            const SizedBox(height: 16),
-
-            TextButton(
-              onPressed: () {
-                Navigator.pushNamed(context, "/register");
-              },
-              child: const Text("Create an account"),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  ),
-),
-
     );
   }
-  void _showError(String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: Colors.red,
-    ),
-  );
-}
 }

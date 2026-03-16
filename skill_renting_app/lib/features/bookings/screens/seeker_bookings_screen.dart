@@ -8,6 +8,8 @@ import 'package:skill_renting_app/features/skills/screens/skill_list_screen.dart
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/features/bookings/screens/booking_schedule_screen.dart';
 import 'package:skill_renting_app/features/bookings/screens/gps_location_screen.dart';
+import 'package:skill_renting_app/features/chat/chat_screen.dart';
+import 'package:skill_renting_app/core/services/auth_storage.dart' as _authSt;
 
 class SeekerBookingsScreen extends StatefulWidget {
   const SeekerBookingsScreen({super.key});
@@ -123,8 +125,93 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
     );
   }
 
+  // ── Cancellation penalty rules ─────────────────────────────────────────────
+  // Hourly: penalty if cancelling within 30 min of slot start
+  // Daily:  penalty if cancelling within 6 hrs of slot start (day starts 7 AM)
+  static bool _hasPenalty(BookingModel b) {
+    final now   = DateTime.now();
+    final start = b.startDate;
+    final diff  = start.difference(now);
+    if (b.pricingUnit == "hour") {
+      return diff.inMinutes < 30 && diff.inSeconds > 0;
+    } else if (b.pricingUnit == "day") {
+      return diff.inMinutes < 360 && diff.inSeconds > 0;
+    }
+    return false;
+  }
+
+  static String _penaltyNote(BookingModel b) {
+    final amount = (b.price * 0.5).toStringAsFixed(0);
+    if (b.pricingUnit == "hour") {
+      return "You are cancelling within 30 minutes of your booked slot.\n\n"
+          "A cancellation penalty of \u20b9$amount (50% of \u20b9${b.price.toStringAsFixed(0)}) applies.\n\n"
+          "Do you still want to cancel?";
+    } else {
+      return "You are cancelling within 6 hours of your booked slot.\n\n"
+          "A cancellation penalty of \u20b9$amount (50% of \u20b9${b.price.toStringAsFixed(0)}) applies.\n\n"
+          "Do you still want to cancel?";
+    }
+  }
+
   Future<void> _cancelBooking(String bookingId) async {
     if (_busy.contains(bookingId)) return;
+
+    final idx = _bookings.indexWhere((b) => b.id == bookingId);
+    final booking = idx != -1 ? _bookings[idx] : null;
+
+    // Show penalty warning if applicable
+    if (booking != null && _hasPenalty(booking)) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+            const SizedBox(width: 8),
+            const Text("Cancellation Penalty"),
+          ]),
+          content: Text(_penaltyNote(booking),
+              style: const TextStyle(fontSize: 14, height: 1.5)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Keep Booking"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red, foregroundColor: Colors.white),
+              child: const Text("Cancel Anyway"),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    } else if (booking != null) {
+      // Standard confirmation
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("Cancel Booking"),
+          content: const Text("Are you sure you want to cancel this booking?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("No"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red, foregroundColor: Colors.white),
+              child: const Text("Yes, Cancel"),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
     setState(() => _busy.add(bookingId));
     try {
       final ok = await BookingService.updateBookingStatus(bookingId, "cancel");
@@ -181,6 +268,20 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
             : null,
         onPay: b.status == "completed" && b.paymentStatus == "pending"
             ? () => _markPaid(b.id)
+            : null,
+        onMessage: (b.status == "accepted" || b.status == "in_progress")
+            ? () async {
+                Navigator.pop(context);
+                final myId = await _authSt.AuthStorage.getUserId();
+                if (!mounted) return;
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    bookingId:       b.id,
+                    otherPersonName: b.providerName,
+                    currentUserId:   myId,
+                  ),
+                ));
+              }
             : null,
       ),
     );
@@ -417,6 +518,7 @@ class _SeekerBookingDetailSheet extends StatefulWidget {
   final VoidCallback? onReview;
   final VoidCallback? onShareGps;
   final Future<void> Function()? onPay;
+  final VoidCallback? onMessage;
 
   const _SeekerBookingDetailSheet({
     required this.booking,
@@ -425,6 +527,7 @@ class _SeekerBookingDetailSheet extends StatefulWidget {
     this.onReview,
     this.onShareGps,
     this.onPay,
+    this.onMessage,
   });
 
   @override
@@ -645,6 +748,20 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
                               label: const Text("Share GPS Location"),
                               style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.orange,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(48)),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+
+                          // ── Message ──────────────────────────────────────
+                          if (widget.onMessage != null) ...[
+                            ElevatedButton.icon(
+                              onPressed: widget.onMessage,
+                              icon: const Icon(Icons.chat_bubble_outline),
+                              label: const Text("Message Provider"),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal,
                                   foregroundColor: Colors.white,
                                   minimumSize: const Size.fromHeight(48)),
                             ),
