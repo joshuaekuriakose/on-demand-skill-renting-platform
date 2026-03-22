@@ -24,6 +24,7 @@ class BookingModel {
 
   // Provider info (populated in seeker's /bookings/my)
   final Map<String, dynamic>? providerAddress;
+  final String providerPhone;
   final double providerRating;
   final int providerTotalReviews;
 
@@ -35,6 +36,12 @@ class BookingModel {
   final double extraCharges;
   final double? totalAmount;
   final String paymentStatus; // pending | paid
+
+  // No-response auto-cancel
+  final bool autoCancelledForNoResponse;
+
+  // Cancellation request (seeker requested; provider must approve)
+  final bool cancellationRequested;
 
   BookingModel({
     required this.id,
@@ -58,6 +65,7 @@ class BookingModel {
     this.jobGpsLng,
     this.gpsLocationStatus = "pending",
     this.providerAddress,
+    this.providerPhone    = "",
     this.providerRating = 0.0,
     this.providerTotalReviews = 0,
     this.beginOtp,
@@ -65,6 +73,8 @@ class BookingModel {
     this.extraCharges = 0,
     this.totalAmount,
     this.paymentStatus = "pending",
+    this.autoCancelledForNoResponse = false,
+    this.cancellationRequested = false,
   });
 
   BookingModel copyWith({
@@ -76,6 +86,8 @@ class BookingModel {
     double? extraCharges,
     double? totalAmount,
     String? paymentStatus,
+    bool? autoCancelledForNoResponse,
+    bool? cancellationRequested,
   }) {
     return BookingModel(
       id: id,
@@ -99,6 +111,7 @@ class BookingModel {
       jobGpsLng: jobGpsLng,
       gpsLocationStatus: gpsLocationStatus ?? this.gpsLocationStatus,
       providerAddress: providerAddress,
+      providerPhone: providerPhone,
       providerRating: providerRating,
       providerTotalReviews: providerTotalReviews,
       beginOtp: beginOtp,
@@ -106,6 +119,8 @@ class BookingModel {
       extraCharges: extraCharges ?? this.extraCharges,
       totalAmount: totalAmount ?? this.totalAmount,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      autoCancelledForNoResponse: autoCancelledForNoResponse ?? this.autoCancelledForNoResponse,
+      cancellationRequested: cancellationRequested ?? this.cancellationRequested,
     );
   }
 
@@ -131,6 +146,7 @@ class BookingModel {
     final Map<String, dynamic>? providerAddr = providerMap?["address"] is Map
         ? providerMap!["address"] as Map<String, dynamic>
         : null;
+    final String providerPhone = providerMap?["phone"]?.toString() ?? "";
     final double providerRating = providerMap?["rating"] is num
         ? (providerMap!["rating"] as num).toDouble()
         : 0.0;
@@ -174,6 +190,7 @@ class BookingModel {
       jobGpsLng: gpsLng,
       gpsLocationStatus: json["gpsLocationStatus"]?.toString() ?? "pending",
       providerAddress:      providerAddr,
+      providerPhone:        providerPhone,
       providerRating:       providerRating,
       providerTotalReviews: providerTotalReviews,
       beginOtp:    json["beginOtp"]?.toString(),
@@ -185,6 +202,8 @@ class BookingModel {
           ? (json["totalAmount"] as num).toDouble()
           : null,
       paymentStatus: json["paymentStatus"]?.toString() ?? "pending",
+      autoCancelledForNoResponse: json["autoCancelledForNoResponse"] == true,
+      cancellationRequested: json["cancellationRequested"] == true,
     );
   }
 
@@ -192,6 +211,18 @@ class BookingModel {
 
   bool get hasGps =>
       gpsLocationStatus == "provided" && jobGpsLat != null && jobGpsLng != null;
+
+  /// Minutes until the booked slot starts (negative if already started).
+  int get minsUntilSlot =>
+      startDate.difference(DateTime.now()).inMinutes;
+
+  /// True when the booking is still pending and the slot is ≤20 min away —
+  /// this is when the seeker should see the provider's phone number.
+  bool get showProviderPhone =>
+      status == "requested" &&
+      providerPhone.isNotEmpty &&
+      minsUntilSlot <= 20 &&
+      minsUntilSlot > 0;
 
   String get createdAtFormatted {
     return "${createdAt.day.toString().padLeft(2, '0')}/"

@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import '../models/skill_model.dart';
 import 'package:skill_renting_app/features/reviews/review_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 import '../../bookings/screens/booking_schedule_screen.dart';
 import 'package:skill_renting_app/features/profile/profile_service.dart';
 import 'package:skill_renting_app/features/profile/models/profile_model.dart';
 import 'package:skill_renting_app/features/profile/screens/profile_screen.dart';
+import 'package:skill_renting_app/features/chat/chat_screen.dart';
+import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/core/services/api_service.dart';
+import 'dart:math' as _math;
 
 class SkillDetailScreen extends StatefulWidget {
   final SkillModel skill;
@@ -22,11 +27,70 @@ class SkillDetailScreen extends StatefulWidget {
 class _SkillDetailScreenState extends State<SkillDetailScreen> {
   List _reviews = [];
   bool _loading = true;
+  String _myId  = "";
+  double? _distanceKm;
+  bool _distanceLoading = false;
 
   @override
   void initState() {
     super.initState();
     _loadReviews();
+    _loadMyId();
+    _loadDistance();
+  }
+
+  Future<void> _loadMyId() async {
+    final id = await AuthStorage.getUserId();
+    if (mounted) setState(() => _myId = id);
+  }
+
+  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+    double r(double d) => d * _math.pi / 180;
+    final dLat = r(lat2 - lat1);
+    final dLon = r(lon2 - lon1);
+    final a = _math.pow(_math.sin(dLat / 2), 2) +
+        _math.cos(r(lat1)) * _math.cos(r(lat2)) *
+            _math.pow(_math.sin(dLon / 2), 2);
+    return 6371.0 * 2 *
+        _math.atan2(_math.sqrt(a.toDouble()), _math.sqrt(1 - a.toDouble()));
+  }
+
+  Future<void> _loadDistance() async {
+    final provPin = widget.skill.providerPincode;
+    if (provPin.isEmpty) return;
+
+    setState(() => _distanceLoading = true);
+    try {
+      final token = await AuthStorage.getToken();
+      final profile = await ProfileService.getProfile();
+      final seekerPin = profile?.address?['pincode']?.toString() ?? '';
+      if (seekerPin.isEmpty) return;
+      if (seekerPin == provPin) {
+        if (mounted) setState(() { _distanceKm = 1.5; _distanceLoading = false; });
+        return;
+      }
+
+      final results = await Future.wait([
+        ApiService.get('/utils/pincode/$provPin',   token: token),
+        ApiService.get('/utils/pincode/$seekerPin', token: token),
+      ]);
+
+      final prov   = results[0];
+      final seeker = results[1];
+      if (prov['statusCode'] != 200 || seeker['statusCode'] != 200) return;
+
+      final pLat = (prov['data']?['lat']    as num?)?.toDouble();
+      final pLon = (prov['data']?['lon']    as num?)?.toDouble();
+      final sLat = (seeker['data']?['lat']  as num?)?.toDouble();
+      final sLon = (seeker['data']?['lon']  as num?)?.toDouble();
+      if (pLat == null || pLon == null || sLat == null || sLon == null) return;
+
+      final km = _haversineKm(pLat, pLon, sLat, sLon);
+      if (mounted) setState(() => _distanceKm = (km * 10).roundToDouble() / 10);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _distanceLoading = false);
+    }
   }
 
   Future<void> _loadReviews() async {
@@ -96,8 +160,9 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final skill = widget.skill;
+    final scheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: Text(skill.title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -123,14 +188,15 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(skill.title,
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: scheme.onPrimary,
                           fontSize: 22,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(skill.category,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 14)),
+                      style: TextStyle(
+                          color: scheme.onPrimary.withOpacity(0.7),
+                          fontSize: 14)),
                   const SizedBox(height: 14),
                   Row(children: [
                     _Chip(
@@ -146,6 +212,149 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
               ),
             ),
 
+            const SizedBox(height: 14),
+
+            // ── Provider card ────────────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2))
+                ],
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor:
+                      scheme.primaryContainer.withOpacity(0.5),
+                  child: Text(
+                    skill.providerName.isNotEmpty
+                        ? skill.providerName[0].toUpperCase()
+                        : '?',
+                    style: TextStyle(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        skill.providerName.isNotEmpty
+                            ? skill.providerName
+                            : 'Provider',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      if (skill.providerLocality.isNotEmpty ||
+                          skill.providerDistrict.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Row(children: [
+                          Icon(Icons.location_on_outlined,
+                              size: 13,
+                              color: scheme.onSurfaceVariant),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              [
+                                if (skill.providerLocality.isNotEmpty)
+                                  skill.providerLocality,
+                                if (skill.providerDistrict.isNotEmpty)
+                                  skill.providerDistrict,
+                              ].join(', '),
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: scheme.onSurfaceVariant),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ]),
+                      ],
+                      if (skill.providerRating > 0) ...[
+                        const SizedBox(height: 4),
+                        Row(children: [
+                          ...List.generate(
+                            5,
+                            (i) => Icon(
+                              i < skill.providerRating.round()
+                                  ? Icons.star
+                                  : Icons.star_border,
+                              size: 13,
+                              color: Colors.amber,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            '${skill.providerRating.toStringAsFixed(1)} (${skill.providerTotalReviews} reviews)',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: scheme.onSurfaceVariant),
+                          ),
+                        ]),
+                      ],
+                    ],
+                  ),
+                ),
+                // ── Distance badge ──────────────────────────────────
+                const SizedBox(width: 10),
+                if (_distanceLoading)
+                  SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: scheme.onSurfaceVariant),
+                  )
+                else if (_distanceKm != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: scheme.outlineVariant.withOpacity(0.5)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.near_me_outlined,
+                            size: 16,
+                            color: scheme.primary),
+                        const SizedBox(height: 3),
+                        Text(
+                          _distanceKm! < 1
+                              ? '${(_distanceKm! * 1000).round()} m'
+                              : '~${_distanceKm!.toStringAsFixed(1)} km',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.primary,
+                          ),
+                        ),
+                        Text(
+                          'away',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ]),
+            ),
+
             const SizedBox(height: 16),
 
             // Description
@@ -156,27 +365,61 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
               const SizedBox(height: 20),
             ],
 
-            // Book button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final ok = await _ensureProfileComplete();
-                  if (!ok || !context.mounted) return;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => BookingScheduleScreen(
-                        skillId: skill.id,
-                        pricingUnit: skill.pricingUnit,
-                      ),
+            // Action buttons — Book and Message
+            Row(
+              children: [
+                // Message button
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      if (_myId.isEmpty) return;
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            chatType:        "direct",
+                            providerId:      skill.providerId,
+                            skillId:         skill.id,
+                            otherPersonName: skill.providerName.isNotEmpty
+                                ? skill.providerName
+                                : "Provider",
+                            currentUserId:   _myId,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text("Message"),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      side: BorderSide(color: scheme.primary),
+                      foregroundColor: scheme.primary,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48)),
-                child: const Text("Book Service"),
-              ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Book button
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final ok = await _ensureProfileComplete();
+                      if (!ok || !context.mounted) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BookingScheduleScreen(
+                            skillId:     skill.id,
+                            pricingUnit: skill.pricingUnit,
+                          ),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48)),
+                    child: const Text("Book Service"),
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 24),
@@ -233,6 +476,7 @@ class _PublicReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final r = review;
     final rating = (r["rating"] as num?)?.toInt() ?? 0;
     final reviewerName = r["reviewer"]?["name"] ?? "User";
@@ -245,9 +489,9 @@ class _PublicReviewCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -262,13 +506,13 @@ class _PublicReviewCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: Colors.indigo.shade100,
+                backgroundColor: scheme.primaryContainer,
                 child: Text(
                   reviewerName.isNotEmpty
                       ? reviewerName[0].toUpperCase()
                       : "U",
                   style: TextStyle(
-                      color: Colors.indigo.shade700,
+                      color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.bold,
                       fontSize: 13),
                 ),
@@ -283,7 +527,8 @@ class _PublicReviewCard extends StatelessWidget {
                             fontWeight: FontWeight.w600, fontSize: 14)),
                     Text(timeAgo(r["createdAt"]),
                         style: TextStyle(
-                            fontSize: 11, color: Colors.grey.shade400)),
+                            fontSize: 11,
+                            color: scheme.onSurfaceVariant.withOpacity(0.85))),
                   ],
                 ),
               ),
@@ -311,9 +556,9 @@ class _PublicReviewCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.indigo.shade50,
+                color: scheme.primaryContainer.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.indigo.shade100),
+                border: Border.all(color: scheme.outlineVariant),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,18 +566,19 @@ class _PublicReviewCard extends StatelessWidget {
                   Row(
                     children: [
                       Icon(Icons.reply,
-                          size: 14, color: Colors.indigo.shade400),
+                          size: 14, color: scheme.primary),
                       const SizedBox(width: 4),
                       Text("Provider's reply",
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: Colors.indigo.shade600)),
+                              color: scheme.primary)),
                       const Spacer(),
                       Text(timeAgo(repliedAt),
                           style: TextStyle(
                               fontSize: 11,
-                              color: Colors.grey.shade400)),
+                              color:
+                                  scheme.onSurfaceVariant.withOpacity(0.85))),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -358,20 +604,21 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: scheme.primaryContainer.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: Colors.white),
+          Icon(icon, size: 13, color: scheme.onPrimaryContainer),
           const SizedBox(width: 4),
           Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: scheme.onPrimaryContainer,
                   fontSize: 12,
                   fontWeight: FontWeight.w600)),
         ],

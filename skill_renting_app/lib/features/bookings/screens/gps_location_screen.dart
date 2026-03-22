@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 /// Screen that lets the seeker pick the exact GPS location of the job site.
 /// Uses OpenStreetMap — completely free, no API key required.
@@ -145,13 +146,19 @@ class _GpsLocationScreenState extends State<GpsLocationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scheme = Theme.of(context).colorScheme;
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("Share Job Location"),
         actions: [
           TextButton(
             onPressed: _submitting ? null : _skip,
-            child: const Text("Skip", style: TextStyle(color: Colors.white70)),
+            child: Text(
+              "Skip",
+              style: TextStyle(
+                color: scheme.onSurfaceVariant.withOpacity(0.85),
+              ),
+            ),
           ),
         ],
       ),
@@ -207,8 +214,8 @@ class _GpsLocationScreenState extends State<GpsLocationScreen> {
             right: 12,
             child: FloatingActionButton.small(
               heroTag: "recenter_gps",
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black87,
+              backgroundColor: scheme.surface,
+              foregroundColor: scheme.onSurface,
               elevation: 4,
               onPressed: _loadCurrentLocation,
               tooltip: "My location",
@@ -223,7 +230,7 @@ class _GpsLocationScreenState extends State<GpsLocationScreen> {
             bottom: 0,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
@@ -265,7 +272,7 @@ class _GpsLocationScreenState extends State<GpsLocationScreen> {
                     "${_pickedLocation.longitude.toStringAsFixed(6)}",
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: scheme.onSurfaceVariant.withOpacity(0.85),
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -275,9 +282,9 @@ class _GpsLocationScreenState extends State<GpsLocationScreen> {
                   // Save as home toggle
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
+                      color: scheme.primaryContainer.withOpacity(0.35),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.shade100),
+                      border: Border.all(color: scheme.primaryContainer),
                     ),
                     child: SwitchListTile(
                       dense: true,
@@ -322,8 +329,8 @@ class _GpsLocationScreenState extends State<GpsLocationScreen> {
                             : "Share Location with Provider",
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue.shade700,
-                        foregroundColor: Colors.white,
+                        backgroundColor: scheme.primary,
+                        foregroundColor: scheme.onPrimary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

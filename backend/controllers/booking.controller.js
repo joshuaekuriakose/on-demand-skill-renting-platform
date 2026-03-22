@@ -168,7 +168,7 @@ exports.getMyBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({ seeker: req.user._id })
       .populate("skill")
-      .populate("provider", "name email address rating totalReviews");
+      .populate("provider", "name email phone address rating totalReviews");
 
     res.status(200).json(bookings);
   } catch (error) {
@@ -308,11 +308,118 @@ exports.cancelBooking = async (req, res) => {
     if (!booking) return res.status(404).json({ message: "Booking not found" });
     if (booking.seeker.toString() !== req.user._id.toString())
       return res.status(403).json({ message: "Not authorized" });
-    if (!["requested", "accepted"].includes(booking.status))
-      return res.status(400).json({ message: "Booking cannot be cancelled" });
 
-    booking.status = "cancelled";
+    // For not-yet-started bookings: cancel directly.
+    if (["requested", "accepted"].includes(booking.status)) {
+      booking.status = "cancelled";
+      await booking.save();
+      return res.json(booking);
+    }
+
+    // For in-progress consecutive bookings: seeker can only REQUEST cancellation.
+    // Provider must approve before the booking is actually cancelled.
+    if (booking.status === "in_progress") {
+      if (booking.cancellationRequested)
+        return res.status(400).json({ message: "Cancellation request already sent to provider" });
+
+      booking.cancellationRequested   = true;
+      booking.cancellationRequestedAt = new Date();
+      await booking.save();
+
+      const provider = await User.findById(booking.provider);
+      await Notification.create({
+        user:      booking.provider,
+        title:     "Cancellation Requested",
+        message:   `${req.user.name} has requested to cancel the ongoing booking.`,
+        type:      "cancellation_request",
+        bookingId: booking._id,
+      });
+      if (provider?.fcmToken) {
+        await sendPush(
+          provider.fcmToken,
+          "Cancellation Requested",
+          `${req.user.name} wants to cancel the ongoing booking.`,
+          { type: "cancellation_request", bookingId: booking._id.toString() }
+        );
+      }
+
+      return res.json({ message: "Cancellation request sent to provider", booking });
+    }
+
+    return res.status(400).json({ message: "Booking cannot be cancelled at this stage" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Approve cancellation (provider) ───────────────────────────────────────────
+exports.approveCancellation = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (!booking.cancellationRequested)
+      return res.status(400).json({ message: "No cancellation request pending" });
+
+    booking.status                   = "cancelled";
+    booking.cancellationRequested    = false;
+    booking.cancellationReason       = "Cancelled by mutual agreement (seeker requested, provider approved)";
     await booking.save();
+
+    const seeker = await User.findById(booking.seeker);
+    await Notification.create({
+      user:      booking.seeker,
+      title:     "Cancellation Approved",
+      message:   "Your provider approved your cancellation request.",
+      type:      "cancellation_approved",
+      bookingId: booking._id,
+    });
+    if (seeker?.fcmToken) {
+      await sendPush(
+        seeker.fcmToken,
+        "Cancellation Approved",
+        "Provider approved your cancellation request.",
+        { type: "cancellation_approved", bookingId: booking._id.toString() }
+      );
+    }
+
+    res.json(booking);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ── Deny cancellation (provider) ──────────────────────────────────────────────
+exports.denyCancellation = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: "Booking not found" });
+    if (booking.provider.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: "Not authorized" });
+    if (!booking.cancellationRequested)
+      return res.status(400).json({ message: "No cancellation request pending" });
+
+    booking.cancellationRequested   = false;
+    booking.cancellationRequestedAt = null;
+    await booking.save();
+
+    const seeker = await User.findById(booking.seeker);
+    await Notification.create({
+      user:      booking.seeker,
+      title:     "Cancellation Denied",
+      message:   "Your provider denied your cancellation request. The booking continues.",
+      type:      "cancellation_denied",
+      bookingId: booking._id,
+    });
+    if (seeker?.fcmToken) {
+      await sendPush(
+        seeker.fcmToken,
+        "Cancellation Denied",
+        "Provider denied your cancellation request. The booking continues.",
+        { type: "cancellation_denied", bookingId: booking._id.toString() }
+      );
+    }
 
     res.json(booking);
   } catch (error) {

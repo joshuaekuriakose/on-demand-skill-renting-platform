@@ -288,4 +288,40 @@ class BookingService {
     );
     return res["statusCode"] == 200;
   }
+
+  // ── Cancellation request (seeker → in_progress booking) ──────────────────────
+  static Future<bool> requestCancellation(String bookingId) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return false;
+    final res = await ApiService.put(
+      "/bookings/$bookingId/cancel",
+      {},
+      token: token,
+    );
+    return res["statusCode"] == 200;
+  }
+
+  // ── Provider: approve seeker's cancellation request ───────────────────────────
+  static Future<bool> approveCancellation(String bookingId) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return false;
+    final res = await ApiService.put(
+      "/bookings/$bookingId/approve-cancel",
+      {},
+      token: token,
+    );
+    return res["statusCode"] == 200;
+  }
+
+  // ── Provider: deny seeker's cancellation request ──────────────────────────────
+  static Future<bool> denyCancellation(String bookingId) async {
+    final token = await AuthStorage.getToken();
+    if (token == null) return false;
+    final res = await ApiService.put(
+      "/bookings/$bookingId/deny-cancel",
+      {},
+      token: token,
+    );
+    return res["statusCode"] == 200;
+  }
 }

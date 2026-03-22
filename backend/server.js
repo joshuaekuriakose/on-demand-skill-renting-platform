@@ -1,16 +1,15 @@
-const dotenv = require("dotenv");
-dotenv.config();
+require("dotenv").config();
 
-const http      = require("http");
+const http = require("http");
 const { Server } = require("socket.io");
-const app       = require("./app");
+const app = require("./app");
 const connectDB = require("./config/db");
 
 connectDB();
 
 const server = http.createServer(app);
 
-// ── Socket.io setup ───────────────────────────────────────────────────────────
+// ── Socket.io setup ─────────────────────────────────────────
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -19,7 +18,7 @@ const io = new Server(server, {
 app.set("io", io);
 
 io.on("connection", (socket) => {
-  // Client joins a room named "booking:<bookingId>"
+  // Booking chat rooms
   socket.on("join_booking", (bookingId) => {
     socket.join(`booking:${bookingId}`);
   });
@@ -28,10 +27,20 @@ io.on("connection", (socket) => {
     socket.leave(`booking:${bookingId}`);
   });
 
+  // Direct conversation rooms
+  socket.on("join_conversation", (conversationId) => {
+    socket.join(`conversation:${conversationId}`);
+  });
+
+  socket.on("leave_conversation", (conversationId) => {
+    socket.leave(`conversation:${conversationId}`);
+  });
+
   socket.on("disconnect", () => {});
 });
 
 const PORT = process.env.PORT || 5000;
+
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });

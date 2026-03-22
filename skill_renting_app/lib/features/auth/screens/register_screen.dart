@@ -5,6 +5,8 @@ import '../../dashboard/main_dashboard.dart';
 import 'login_screen.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_scaffold.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -72,6 +74,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _isLoading = false);
 
+    // Prevent “inactive InputConnection” warnings by dismissing keyboard
+    // before showing the success UI and navigating.
+    if (context.mounted) {
+      FocusScope.of(context).unfocus();
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Registration successful")),
     );
@@ -93,93 +100,95 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text("Register")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: "Name"),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: "Email"),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 10),
-
-              // Phone with inline validation
-              TextField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(10),
-                ],
-                decoration: InputDecoration(
-                  labelText: "Phone",
-                  errorText: _phoneError,
+          child: AppCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: "Name"),
                 ),
-                onChanged: (v) {
-                  final err = _validatePhone(v);
-                  if (err != _phoneError) {
-                    setState(() => _phoneError = err);
-                  }
-                },
-              ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(labelText: "Email"),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 10),
 
-              const SizedBox(height: 10),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Password"),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _houseController,
-                decoration:
-                    const InputDecoration(labelText: "House name"),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _localityController,
-                decoration: const InputDecoration(labelText: "Locality"),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _pinController,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                decoration: const InputDecoration(labelText: "PIN code"),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _districtController,
-                decoration: const InputDecoration(labelText: "District"),
-              ),
-              const SizedBox(height: 20),
-              if (_error != null)
-                Text(_error!, style: const TextStyle(color: Colors.red)),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _register,
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text("Register"),
-              ),
-            ],
+                // Phone with inline validation
+                TextField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: "Phone",
+                    errorText: _phoneError,
+                  ),
+                  onChanged: (v) {
+                    final err = _validatePhone(v);
+                    if (err != _phoneError) {
+                      setState(() => _phoneError = err);
+                    }
+                  },
+                ),
+
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: "Password"),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _houseController,
+                  decoration: const InputDecoration(labelText: "House name"),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _localityController,
+                  decoration: const InputDecoration(labelText: "Locality"),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _pinController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration: const InputDecoration(labelText: "PIN code"),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _districtController,
+                  decoration: const InputDecoration(labelText: "District"),
+                ),
+                const SizedBox(height: 20),
+                if (_error != null)
+                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _register,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("Register"),
+                ),
+              ],
+            ),
           ),
         ),
       ),

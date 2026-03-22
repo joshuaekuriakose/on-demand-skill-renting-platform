@@ -11,13 +11,17 @@ class SkeletonList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base = scheme.surfaceVariant;
+    final highlight = scheme.surfaceContainerHighest;
+
     return ListView.builder(
       itemCount: itemCount,
       padding: const EdgeInsets.all(12),
       itemBuilder: (context, index) {
         return Shimmer.fromColors(
-          baseColor: Colors.grey.shade300,
-          highlightColor: Colors.grey.shade100,
+          baseColor: base,
+          highlightColor: highlight,
           child: Card(
             elevation: 2,
             margin: const EdgeInsets.symmetric(vertical: 8),
@@ -35,7 +39,7 @@ class SkeletonList extends StatelessWidget {
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: scheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
@@ -52,7 +56,7 @@ class SkeletonList extends StatelessWidget {
                         Container(
                           height: 14,
                           width: double.infinity,
-                          color: Colors.white,
+                          color: scheme.surfaceContainerHighest,
                         ),
 
                         const SizedBox(height: 8),
@@ -60,7 +64,7 @@ class SkeletonList extends StatelessWidget {
                         Container(
                           height: 12,
                           width: 150,
-                          color: Colors.white,
+                          color: scheme.surfaceContainerHighest,
                         ),
                       ],
                     ),

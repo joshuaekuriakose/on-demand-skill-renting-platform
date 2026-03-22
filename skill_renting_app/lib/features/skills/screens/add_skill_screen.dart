@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class AddSkillScreen extends StatefulWidget {
   const AddSkillScreen({super.key});
@@ -92,7 +93,7 @@ final response = await ApiService.post(
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("Add Service"),
       ),

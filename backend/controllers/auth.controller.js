@@ -8,9 +8,12 @@ exports.registerUser = async (req, res) => {
     const { name, email, phone, password, address } = req.body;
     const { validateAndEnrichAddress } = require("../utils/pincode");
 
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ $or: [{ email }, { phone }] });
     if (userExists) {
-      return res.status(400).json({ message: "User already exists" });
+      if (userExists.email === email.toLowerCase()) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+      return res.status(400).json({ message: "Phone number already registered" });
     }
 
     let enrichedAddress;

@@ -521,9 +521,12 @@ exports.generateBulkUserReport = async (req, res) => {
         locality:  user.address?.locality || "-",
         isProvider,
         bookingCount: bookings.length,
-        totalSpent: isProvider
+        totalEarned: isProvider
           ? bookings.filter(b => b.paymentStatus === "paid").reduce((s,b) => s + (b.totalAmount || 0), 0)
-          : bookings.filter(b => b.paymentStatus === "paid").reduce((s,b) => s + (b.totalAmount || 0), 0),
+          : 0,
+        totalSpent: !isProvider
+          ? bookings.filter(b => b.paymentStatus === "paid").reduce((s,b) => s + (b.totalAmount || 0), 0)
+          : 0,
         bookings: bookings.map(b => ({
           skillTitle:   b.skill?.title   || "-",
           pricingUnit:  b.skill?.pricing?.unit || "-",
@@ -541,7 +544,7 @@ exports.generateBulkUserReport = async (req, res) => {
         filters: { role: role || "all", district: district || "all", pricingUnit: pricingUnit || "all" },
         dateFrom: from, dateTo: to,
         users: reportRows,
-        grandTotal: reportRows.reduce((s,u) => s + u.totalSpent, 0),
+        grandTotal: reportRows.reduce((s,u) => s + (u.totalEarned || u.totalSpent || 0), 0),
       }
     });
   } catch (err) { res.status(500).json({ message: err.message }); }

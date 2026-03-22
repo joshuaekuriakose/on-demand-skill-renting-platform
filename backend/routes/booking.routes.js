@@ -11,6 +11,8 @@ const {
   rejectBooking,
   completeBooking,
   cancelBooking,
+  approveCancellation,
+  denyCancellation,
   getOccupiedRange,
   toggleBlockedSlot,
   beginBooking,
@@ -32,6 +34,8 @@ router.post("/blocks/toggle",            protect, toggleBlockedSlot);
 router.put("/:id/accept",               protect, acceptBooking);
 router.put("/:id/reject",               protect, rejectBooking);
 router.put("/:id/cancel",               protect, cancelBooking);
+router.put("/:id/approve-cancel",       protect, approveCancellation); // provider approves seeker's cancellation request
+router.put("/:id/deny-cancel",          protect, denyCancellation);    // provider denies seeker's cancellation request
 router.put("/:id/complete",             protect, completeBooking);   // legacy / fallback
 
 // OTP flow

@@ -20,10 +20,15 @@ router.post("/", protect, async (req, res) => {
       return res.status(403).json({ message: "Not authorized to review" });
     }
 
-    if (booking.status !== "completed") {
+    // Allow review on completed bookings OR auto-cancelled (no-response) bookings
+    const isCompleted     = booking.status === "completed";
+    const isAutoCancelled = booking.status === "cancelled" &&
+                            booking.autoCancelledForNoResponse === true;
+
+    if (!isCompleted && !isAutoCancelled) {
       return res
         .status(400)
-        .json({ message: "Only completed bookings can be reviewed" });
+        .json({ message: "Only completed or auto-cancelled bookings can be reviewed" });
     }
 
     const existingReview = await Review.findOne({ booking: bookingId });

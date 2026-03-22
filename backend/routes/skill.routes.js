@@ -15,7 +15,7 @@ router.get("/", optionalAuth, async (req, res) => {
     }
 
     const skills = await Skill.find(filter)
-      .populate("provider", "name email")
+      .populate("provider", "name email address rating totalReviews")
       .sort({ createdAt: -1 });
 
     res.json(skills);
@@ -97,6 +97,7 @@ router.get("/:id/available-slots", protect, async (req, res) => {
     const date = req.query.date;
 
     const skill = await Skill.findById(skillId);
+    if (!skill) return res.status(404).json({ message: "Skill not found" });
     const pricingUnit = skill.pricing.unit;
 
     // ── Daily ──────────────────────────────────────────────────────────────────

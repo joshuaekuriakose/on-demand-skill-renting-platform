@@ -3,6 +3,7 @@ import '../services/auth_storage.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/dashboard/main_dashboard.dart';
 import '../../features/admin/admin_dashboard.dart';
+import '../widgets/app_scaffold.dart';
 
 class AppEntry extends StatelessWidget {
   const AppEntry({super.key});
@@ -13,7 +14,7 @@ class AppEntry extends StatelessWidget {
       future: _decideStart(),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(
+          return const AppScaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }

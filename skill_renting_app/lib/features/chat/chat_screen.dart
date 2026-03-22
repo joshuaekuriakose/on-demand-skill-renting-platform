@@ -3,17 +3,36 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/core/constants/api_constants.dart';
 import 'message_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
+
+// ── Chat modes ────────────────────────────────────────────────────────────────
+// "booking"  → booking-based chat (bookingId required, conversationId ignored)
+// "direct"   → seeker→provider direct chat
+//              If conversationId is null this is a brand-new chat; conversationId
+//              is obtained from the server after the first message is sent.
 
 class ChatScreen extends StatefulWidget {
-  final String bookingId;
-  final String otherPersonName; // shown in app bar
+  // For booking chats
+  final String? bookingId;
+
+  // For direct chats
+  final String? conversationId; // null if this is a new direct chat
+  final String? providerId;     // required for new direct chats
+  final String? skillId;        // optional context for new direct chats
+
+  final String chatType;        // "booking" | "direct"
+  final String otherPersonName;
   final String currentUserId;
 
   const ChatScreen({
     super.key,
-    required this.bookingId,
     required this.otherPersonName,
     required this.currentUserId,
+    this.chatType      = "booking",
+    this.bookingId,
+    this.conversationId,
+    this.providerId,
+    this.skillId,
   });
 
   @override
@@ -29,9 +48,15 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sending  = false;
   IO.Socket? _socket;
 
+  // For direct chats: may be null until the first message is sent
+  String? _conversationId;
+
+  bool get _isDirect => widget.chatType == "direct";
+
   @override
   void initState() {
     super.initState();
+    _conversationId = widget.conversationId;
     _loadMessages();
     _connectSocket();
   }
@@ -40,53 +65,75 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _ctrl.dispose();
     _scroll.dispose();
-    _socket?.emit("leave_booking", widget.bookingId);
+    if (_isDirect && _conversationId != null) {
+      _socket?.emit("leave_conversation", _conversationId);
+    } else if (!_isDirect && widget.bookingId != null) {
+      _socket?.emit("leave_booking", widget.bookingId);
+    }
     _socket?.dispose();
     super.dispose();
   }
 
-  // ── REST: initial load ────────────────────────────────────────────────────
+  // ── Load messages ─────────────────────────────────────────────────────────
   Future<void> _loadMessages() async {
     setState(() => _loading = true);
-    final data = await MessageService.fetchMessages(widget.bookingId);
+
+    List<Map<String, dynamic>> data = [];
+
+    if (_isDirect && _conversationId != null) {
+      data = await MessageService.fetchDirectMessages(_conversationId!);
+    } else if (!_isDirect && widget.bookingId != null) {
+      data = await MessageService.fetchMessages(widget.bookingId!);
+    }
+    // If direct chat with no conversationId yet, messages are empty (new chat)
+
     if (mounted) {
       setState(() { _messages = data; _loading = false; });
       _scrollToBottom();
     }
   }
 
-  // ── Socket.io: real-time ──────────────────────────────────────────────────
-  void _connectSocket() {
-    // Strip "/api" suffix — socket connects to root
-    final baseUrl = ApiConstants.baseUrl.replaceAll("/api", "");
+  // ── Socket.io ─────────────────────────────────────────────────────────────
+  Future<void> _connectSocket() async {
+    final token = await AuthStorage.getToken();
 
-    _socket = IO.io(baseUrl, IO.OptionBuilder()
-        .setTransports(["websocket"])
-        .disableAutoConnect()
-        .build());
+    _socket = IO.io(
+      ApiConstants.socketBaseUrl,
+      IO.OptionBuilder()
+          .setTransports(["websocket"])
+          .setAuth(token != null ? {"token": token} : {})
+          .disableAutoConnect()
+          .build(),
+    );
 
     _socket!.connect();
 
     _socket!.onConnect((_) {
-      _socket!.emit("join_booking", widget.bookingId);
+      if (_isDirect && _conversationId != null) {
+        _socket!.emit("join_conversation", _conversationId);
+      } else if (!_isDirect && widget.bookingId != null) {
+        _socket!.emit("join_booking", widget.bookingId);
+      }
     });
 
     _socket!.on("new_message", (data) {
       if (!mounted) return;
       final msg = Map<String, dynamic>.from(data as Map);
 
-      // Skip messages sent by ME — already handled by optimistic insert + REST replace
       final senderId = (msg["sender"] as Map?)?["_id"]?.toString() ?? "";
       if (senderId == widget.currentUserId) return;
 
-      // Avoid genuine duplicates from reconnect/reload
       final id = msg["_id"]?.toString() ?? "";
-      if (id.isNotEmpty &&
-          _messages.any((m) => m["_id"]?.toString() == id)) return;
+      if (id.isNotEmpty && _messages.any((m) => m["_id"]?.toString() == id)) return;
 
       setState(() => _messages.add(msg));
       _scrollToBottom();
     });
+  }
+
+  // ── Join socket room once conversationId becomes known ────────────────────
+  void _joinConversationRoom(String conversationId) {
+    _socket?.emit("join_conversation", conversationId);
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────
@@ -109,17 +156,45 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _messages.add(optimistic));
     _scrollToBottom();
 
-    final sent = await MessageService.sendMessage(widget.bookingId, text);
+    Map<String, dynamic>? sent;
+
+    if (_isDirect) {
+      if (_conversationId == null) {
+        // First message in a brand-new direct chat
+        final result = await MessageService.startDirectChat(
+          providerId: widget.providerId!,
+          text:       text,
+          skillId:    widget.skillId,
+        );
+        if (result != null) {
+          final newConvId = result["conversationId"]?.toString();
+          if (newConvId != null && mounted) {
+            setState(() => _conversationId = newConvId);
+            _joinConversationRoom(newConvId);
+          }
+          final msgData = result["message"];
+          if (msgData is Map) {
+            sent = Map<String, dynamic>.from(msgData);
+          }
+        }
+      } else {
+        // Subsequent messages in an existing direct chat
+        sent = await MessageService.sendDirectMessage(_conversationId!, text);
+      }
+    } else {
+      // Booking chat
+      sent = await MessageService.sendMessage(widget.bookingId!, text);
+    }
+
     if (mounted) {
       setState(() {
         _sending = false;
-        // Replace optimistic with real message
         final idx = _messages.lastIndexWhere((m) => m["_optimistic"] == true);
         if (idx != -1) {
           if (sent != null) {
-            _messages[idx] = sent;
+            _messages[idx] = sent!;
           } else {
-            _messages.removeAt(idx); // send failed
+            _messages.removeAt(idx);
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text("Failed to send message")),
             );
@@ -143,8 +218,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _isMe(Map<String, dynamic> msg) {
     final senderId = (msg["sender"] as Map?)?["_id"]?.toString() ?? "";
-    return senderId == widget.currentUserId ||
-        msg["_optimistic"] == true;
+    return senderId == widget.currentUserId || msg["_optimistic"] == true;
   }
 
   String _timeLabel(String? iso) {
@@ -171,9 +245,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final dt = DateTime.tryParse(iso ?? "")?.toLocal();
     if (dt == null) return "";
     final now = DateTime.now();
-    if (dt.year == now.year &&
-        dt.month == now.month &&
-        dt.day == now.day) return "Today";
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day)
+      return "Today";
     final yesterday = now.subtract(const Duration(days: 1));
     if (dt.year == yesterday.year &&
         dt.month == yesterday.month &&
@@ -185,21 +258,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8),
+    final theme = Theme.of(context);
+    return AppScaffold(
       appBar: AppBar(
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
         title: Row(children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor: Colors.white.withOpacity(0.2),
+            backgroundColor: theme.colorScheme.onPrimary.withOpacity(0.12),
             child: Text(
               widget.otherPersonName.isNotEmpty
                   ? widget.otherPersonName[0].toUpperCase()
                   : "?",
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  color: theme.colorScheme.onPrimary,
+                  fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(width: 10),
@@ -208,11 +282,16 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(widget.otherPersonName,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 15, fontWeight: FontWeight.bold)),
-                const Text("Booking Chat",
-                    style:
-                        TextStyle(fontSize: 11, color: Colors.white70)),
+                if (_isDirect)
+                  Text(
+                    "Direct message",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onPrimary.withOpacity(0.7),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -220,7 +299,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          // ── Message list ────────────────────────────────────────────────
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -230,17 +308,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.chat_bubble_outline,
-                                size: 56,
-                                color: Colors.grey.shade300),
-                            const SizedBox(height: 12),
+                                size: 48,
+                                color: theme.colorScheme.onSurfaceVariant),
+                            const SizedBox(height: 10),
                             Text("No messages yet",
                                 style: TextStyle(
-                                    color: Colors.grey.shade400,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                     fontSize: 15)),
                             const SizedBox(height: 6),
                             Text("Send the first message!",
                                 style: TextStyle(
-                                    color: Colors.grey.shade300,
+                                    color: theme.colorScheme.onSurfaceVariant,
                                     fontSize: 13)),
                           ],
                         ),
@@ -254,44 +332,43 @@ class _ChatScreenState extends State<ChatScreen> {
                           final msg  = _messages[i];
                           final me   = _isMe(msg);
                           final text = msg["text"]?.toString() ?? "";
-                          final time = _timeLabel(
-                              msg["createdAt"]?.toString());
-                          final isPending =
-                              msg["_optimistic"] == true;
+                          final time = _timeLabel(msg["createdAt"]?.toString());
+                          final isPending = msg["_optimistic"] == true;
 
                           return Column(
                             children: [
-                              // Date separator
                               if (_showDateSeparator(i))
                                 _DateChip(_dateSeparatorLabel(
                                     msg["createdAt"]?.toString())),
-
-                              // Bubble
                               Align(
                                 alignment: me
                                     ? Alignment.centerRight
                                     : Alignment.centerLeft,
                                 child: Container(
-                                  margin: const EdgeInsets.only(
-                                      bottom: 6),
+                                  margin: const EdgeInsets.only(bottom: 6),
                                   constraints: BoxConstraints(
                                       maxWidth: MediaQuery.of(context)
                                               .size
                                               .width *
                                           0.72),
                                   decoration: BoxDecoration(
-                                    color: me
-                                        ? Colors.indigo
-                                        : Colors.white,
+                                    color:
+                                        me
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .primary
+                                            : Theme.of(context)
+                                                .colorScheme
+                                                .surface,
                                     borderRadius: BorderRadius.only(
                                       topLeft:
                                           const Radius.circular(16),
                                       topRight:
                                           const Radius.circular(16),
-                                      bottomLeft: Radius.circular(
-                                          me ? 16 : 4),
-                                      bottomRight: Radius.circular(
-                                          me ? 4 : 16),
+                                      bottomLeft:
+                                          Radius.circular(me ? 16 : 4),
+                                      bottomRight:
+                                          Radius.circular(me ? 4 : 16),
                                     ),
                                     boxShadow: [
                                       BoxShadow(
@@ -312,32 +389,36 @@ class _ChatScreenState extends State<ChatScreen> {
                                           style: TextStyle(
                                               fontSize: 14,
                                               color: me
-                                                  ? Colors.white
-                                                  : Colors
-                                                      .black87,
+                                                  ? Theme.of(context)
+                                                      .colorScheme
+                                                      .onPrimary
+                                                  : Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurface,
                                               height: 1.4)),
                                       const SizedBox(height: 4),
                                       Row(
-                                        mainAxisSize:
-                                            MainAxisSize.min,
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Text(time,
                                               style: TextStyle(
                                                   fontSize: 10,
                                                   color: me
-                                                      ? Colors
-                                                          .white60
-                                                      : Colors.grey
-                                                          .shade400)),
+                                                      ? Theme.of(context)
+                                                          .colorScheme
+                                                          .onPrimary
+                                                          .withOpacity(0.7)
+                                                      : Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurfaceVariant)),
                                           if (me) ...[
-                                            const SizedBox(
-                                                width: 4),
+                                            const SizedBox(width: 4),
                                             Icon(
                                               isPending
                                                   ? Icons.access_time
                                                   : Icons.done,
                                               size: 12,
-                                              color: Colors.white60,
+                                              color: theme.colorScheme.onPrimary.withOpacity(0.7),
                                             ),
                                           ],
                                         ],
@@ -352,9 +433,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
           ),
 
-          // ── Input bar ────────────────────────────────────────────────────
+          // ── Input bar ──────────────────────────────────────────────────────
           Container(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surface,
             padding: EdgeInsets.only(
               left: 12,
               right: 8,
@@ -371,21 +452,21 @@ class _ChatScreenState extends State<ChatScreen> {
                   decoration: InputDecoration(
                     hintText: "Type a message…",
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 10),
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide:
-                            BorderSide(color: Colors.grey.shade200)),
+                            BorderSide(color: theme.colorScheme.outlineVariant)),
                     enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide:
-                            BorderSide(color: Colors.grey.shade200)),
+                            BorderSide(color: theme.colorScheme.outlineVariant)),
                     focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: const BorderSide(
-                            color: Colors.indigo, width: 1.5)),
+                        borderSide: BorderSide(
+                            color: theme.colorScheme.primary, width: 1.5)),
                   ),
                   onSubmitted: (_) => _send(),
                 ),
@@ -403,10 +484,13 @@ class _ChatScreenState extends State<ChatScreen> {
                                 strokeWidth: 2)))
                     : FloatingActionButton.small(
                         onPressed: _send,
-                        backgroundColor: Colors.indigo,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         elevation: 0,
-                        child: const Icon(Icons.send_rounded,
-                            color: Colors.white, size: 20),
+                        child: Icon(
+                          Icons.send_rounded,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          size: 20,
+                        ),
                       ),
               ),
             ]),
@@ -428,7 +512,8 @@ class _DateChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.08),
             borderRadius: BorderRadius.circular(20),
@@ -436,7 +521,7 @@ class _DateChip extends StatelessWidget {
           child: Text(label,
               style: TextStyle(
                   fontSize: 11,
-                  color: Colors.grey.shade600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500)),
         ),
       ),

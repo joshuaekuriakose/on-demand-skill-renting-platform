@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class NavigationScreen extends StatefulWidget {
   final double jobLat;
@@ -69,6 +70,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
       if (_mapReady) _fitBounds();
     } catch (_) {
       setState(() => _loadingMyLocation = false);
+      _showSnack("Couldn't get your location. Please try again.");
     }
   }
 
@@ -227,7 +229,7 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: Text("Navigate to ${widget.seekerName}"),
         actions: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../skills/skill_service.dart';
 import '../booking_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class ProviderCalendarScreen extends StatefulWidget {
   final String skillId;
@@ -215,7 +216,7 @@ class _ProviderCalendarScreenState extends State<ProviderCalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("Manage Calendar"),
       ),

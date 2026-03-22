@@ -3,6 +3,7 @@ import '../skill_service.dart';
 import '../models/skill_model.dart';
 import 'skill_detail_screen.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class SkillListScreen extends StatefulWidget {
   const SkillListScreen({super.key});
@@ -201,7 +202,8 @@ void _openFilterSheet() {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scheme = Theme.of(context).colorScheme;
+    return AppScaffold(
       appBar: AppBar(title: const Text("Available Skills")),
       body: Column(
   children: [
@@ -253,130 +255,137 @@ void _openFilterSheet() {
     final skill = skills[index];
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Colors.white,
+        color: scheme.surface,
         elevation: 2,
         borderRadius: BorderRadius.circular(16),
-
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SkillDetailScreen(skill: skill),
-              ),
-            );
-          },
-
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              // Top Image / Banner
-              Container(
-                height: 140,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
-                  color: Colors.indigo.shade50,
-                ),
-
-                child: const Center(
-                  child: Icon(
-                    Icons.work_outline,
-                    size: 48,
-                    color: Colors.indigo,
-                  ),
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(14),
-
-                child: Column(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SkillDetailScreen(skill: skill)),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Title + price row ──────────────────────────────────
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
-                    // Title
-                    Text(
-                      skill.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            skill.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            skill.category,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant.withOpacity(0.7),
+                              fontSize: 12),
+                          ),
+                        ],
                       ),
                     ),
-
-                    const SizedBox(height: 4),
-
-                    // Category
-                    Text(
-                      skill.category,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 13,
-                      ),
-                    ),
-
-                    const SizedBox(height: 10),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-
-                        // Price Badge
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
+                              horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.indigo.shade50,
+                            color: scheme.primaryContainer.withOpacity(0.35),
                             borderRadius: BorderRadius.circular(20),
                           ),
-
                           child: Text(
-                            "₹${skill.price}/${skill.pricingUnit}",
-                            style: const TextStyle(
+                            "₹${skill.price.toStringAsFixed(0)}/${skill.pricingUnit}",
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.indigo,
-                              fontSize: 13,
-                            ),
+                              color: scheme.primary, fontSize: 13),
                           ),
                         ),
-
-                        // Rating
-                        Row(
-                          children: [
-
-                            const Icon(
-                              Icons.star,
-                              color: Colors.amber,
-                              size: 18,
-                            ),
-
-                            const SizedBox(width: 3),
-
-                            Text(
-                              skill.rating.toStringAsFixed(1),
+                        const SizedBox(height: 5),
+                        Row(children: [
+                          const Icon(Icons.star, color: Colors.amber, size: 14),
+                          const SizedBox(width: 2),
+                          Text(skill.rating.toStringAsFixed(1),
                               style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+                                  fontWeight: FontWeight.w600, fontSize: 12)),
+                        ]),
                       ],
                     ),
                   ],
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 12),
+                Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.5)),
+                const SizedBox(height: 10),
+
+                // ── Provider info ──────────────────────────────────────
+                Row(children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: scheme.primaryContainer.withOpacity(0.5),
+                    child: Text(
+                      skill.providerName.isNotEmpty
+                          ? skill.providerName[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          skill.providerName.isNotEmpty
+                              ? skill.providerName
+                              : 'Provider',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        if (skill.providerLocality.isNotEmpty ||
+                            skill.providerDistrict.isNotEmpty)
+                          Text(
+                            [
+                              if (skill.providerLocality.isNotEmpty)
+                                skill.providerLocality,
+                              if (skill.providerDistrict.isNotEmpty)
+                                skill.providerDistrict,
+                            ].join(', '),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: scheme.onSurfaceVariant.withOpacity(0.7)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (skill.providerRating > 0)
+                    Row(children: [
+                      const Icon(Icons.thumb_up_outlined,
+                          size: 12, color: Colors.green),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${skill.providerTotalReviews} reviews',
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.green),
+                      ),
+                    ]),
+                ]),
+              ],
+            ),
           ),
         ),
       ),

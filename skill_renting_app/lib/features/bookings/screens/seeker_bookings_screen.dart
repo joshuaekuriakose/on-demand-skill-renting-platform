@@ -10,6 +10,8 @@ import 'package:skill_renting_app/features/bookings/screens/booking_schedule_scr
 import 'package:skill_renting_app/features/bookings/screens/gps_location_screen.dart';
 import 'package:skill_renting_app/features/chat/chat_screen.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart' as _authSt;
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
+import 'package:skill_renting_app/core/widgets/status_chip.dart';
 
 class SeekerBookingsScreen extends StatefulWidget {
   const SeekerBookingsScreen({super.key});
@@ -26,6 +28,9 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
   /// Tracks OTP keys already shown this session to avoid re-popups
   final Set<String> _shownOtps = {};
 
+  /// Tracks auto-cancel popup IDs already shown this session
+  final Set<String> _shownAutoCancelAlerts = {};
+
   @override
   void initState() {
     super.initState();
@@ -41,8 +46,11 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
       _bookings = data;
       _loading = false;
     });
-    // Check for new OTPs after load
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkOtps());
+    // Check for new OTPs and auto-cancel alerts after load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkOtps();
+      _checkAutoCancelledBookings();
+    });
   }
 
   void _checkOtps() {
@@ -125,6 +133,111 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
     );
   }
 
+  // ── Auto-cancel alert (provider no-response) ──────────────────────────────
+  void _checkAutoCancelledBookings() {
+    for (final b in _bookings) {
+      if (b.autoCancelledForNoResponse && !b.isReviewed) {
+        if (!_shownAutoCancelAlerts.contains(b.id)) {
+          _shownAutoCancelAlerts.add(b.id);
+          _showAutoCancelPopup(b);
+          return; // show one dialog at a time
+        }
+      }
+    }
+  }
+
+  void _showAutoCancelPopup(BookingModel b) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.deepOrange.shade600, size: 26),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text("Provider Didn't Respond",
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Your booking for",
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              b.skillTitle,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "with ${b.providerName}",
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Text(
+                "was auto-cancelled because the provider did not respond "
+                "within 10 minutes of your scheduled start time.",
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.orange.shade800,
+                    height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              "You can rate their responsiveness and report this incident. "
+              "This helps keep the platform accountable.",
+              style: TextStyle(
+                  fontSize: 12, color: Colors.grey.shade600, height: 1.5),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.spaceBetween,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Later",
+                style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ReviewScreen(
+                    booking: b,
+                    isForNoResponse: true,
+                  ),
+                ),
+              );
+              if (mounted) _loadBookings();
+            },
+            icon: const Icon(Icons.star_half_outlined, size: 18),
+            label: const Text("Rate & Report"),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10))),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Cancellation penalty rules ─────────────────────────────────────────────
   // Hourly: penalty if cancelling within 30 min of slot start
   // Daily:  penalty if cancelling within 6 hrs of slot start (day starts 7 AM)
@@ -150,6 +263,22 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
       return "You are cancelling within 6 hours of your booked slot.\n\n"
           "A cancellation penalty of \u20b9$amount (50% of \u20b9${b.price.toStringAsFixed(0)}) applies.\n\n"
           "Do you still want to cancel?";
+    }
+  }
+
+  Future<void> _requestCancellation(String bookingId) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final ok = await BookingService.requestCancellation(bookingId);
+      if (ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Cancellation request sent to provider.")));
+        _loadBookings();
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
     }
   }
 
@@ -245,14 +374,22 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
       builder: (_) => _SeekerBookingDetailSheet(
         booking: b,
         isBusy: _busy.contains(b.id),
-        onCancel: b.status == "requested" || b.status == "accepted"
+        onCancel: (b.status == "requested" || b.status == "accepted")
             ? () { Navigator.pop(context); _cancelBooking(b.id); }
             : null,
-        onReview: b.status == "completed" && !b.isReviewed
+        onRequestCancellation: (b.status == "in_progress" && !b.cancellationRequested)
+            ? () { Navigator.pop(context); _requestCancellation(b.id); }
+            : null,
+        // Allow review for completed bookings AND auto-cancelled (no-response) ones
+        onReview: (b.status == "completed" && !b.isReviewed) ||
+                  (b.autoCancelledForNoResponse && !b.isReviewed)
             ? () async {
                 Navigator.pop(context);
                 await Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => ReviewScreen(booking: b)));
+                    MaterialPageRoute(builder: (_) => ReviewScreen(
+                      booking: b,
+                      isForNoResponse: b.autoCancelledForNoResponse,
+                    )));
                 _loadBookings();
               }
             : null,
@@ -276,6 +413,7 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
                 if (!mounted) return;
                 Navigator.push(context, MaterialPageRoute(
                   builder: (_) => ChatScreen(
+                    chatType:        "booking",
                     bookingId:       b.id,
                     otherPersonName: b.providerName,
                     currentUserId:   myId,
@@ -289,7 +427,7 @@ class _SeekerBookingsScreenState extends State<SeekerBookingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text("My Bookings")),
       body: _loading
           ? const SkeletonList()
@@ -370,6 +508,7 @@ class _SeekerBookingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final b = booking;
+    final scheme = Theme.of(context).colorScheme;
     final needsGps = b.status == "accepted" && b.gpsLocationStatus == "pending";
     final hasBeginOtp    = b.beginOtp != null;
     final hasCompleteOtp = b.completeOtp != null;
@@ -380,7 +519,7 @@ class _SeekerBookingCard extends StatelessWidget {
         duration: const Duration(milliseconds: 280),
         margin: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -421,27 +560,34 @@ class _SeekerBookingCard extends StatelessWidget {
                             const SizedBox(height: 2),
                             Text(b.createdAtFormatted,
                                 style: TextStyle(
-                                    fontSize: 11, color: Colors.grey.shade400)),
+                                    fontSize: 11,
+                                    color:
+                                        scheme.onSurfaceVariant.withOpacity(0.85))),
                           ],
                         ),
                       ),
-                      _StatusBadge(b.status),
+                      StatusChip(status: b.status),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Row(children: [
-                    const Icon(Icons.person, size: 14, color: Colors.grey),
+                    Icon(Icons.person,
+                        size: 14, color: scheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Text(b.providerName,
                         style: const TextStyle(fontSize: 13)),
                   ]),
                   const SizedBox(height: 4),
                   Row(children: [
-                    const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                    Icon(Icons.access_time,
+                        size: 14, color: scheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(b.slotRangeFormatted,
-                          style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          )),
                     ),
                   ]),
                   const SizedBox(height: 12),
@@ -450,7 +596,7 @@ class _SeekerBookingCard extends StatelessWidget {
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     child: isBusy
-                        ? const Padding(
+                        ? Padding(
                             key: ValueKey("busy"),
                             padding: EdgeInsets.symmetric(vertical: 4),
                             child: Row(children: [
@@ -459,7 +605,9 @@ class _SeekerBookingCard extends StatelessWidget {
                                   child: CircularProgressIndicator(strokeWidth: 2)),
                               SizedBox(width: 10),
                               Text("Updating…",
-                                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: 13)),
                             ]),
                           )
                         : Wrap(
@@ -519,6 +667,7 @@ class _SeekerBookingDetailSheet extends StatefulWidget {
   final VoidCallback? onShareGps;
   final Future<void> Function()? onPay;
   final VoidCallback? onMessage;
+  final VoidCallback? onRequestCancellation;
 
   const _SeekerBookingDetailSheet({
     required this.booking,
@@ -528,6 +677,7 @@ class _SeekerBookingDetailSheet extends StatefulWidget {
     this.onShareGps,
     this.onPay,
     this.onMessage,
+    this.onRequestCancellation,
   });
 
   @override
@@ -552,6 +702,7 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
   @override
   Widget build(BuildContext context) {
     final b = widget.booking;
+    final scheme = Theme.of(context).colorScheme;
     Color statusColor;
     switch (b.status) {
       case "requested":   statusColor = Colors.orange;       break;
@@ -568,8 +719,8 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
       minChildSize: 0.4,
       maxChildSize: 0.96,
       builder: (_, ctrl) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: scheme.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -579,7 +730,7 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
               margin: const EdgeInsets.symmetric(vertical: 12),
               width: 40, height: 4,
               decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: scheme.outlineVariant.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(2)),
             ),
 
@@ -616,7 +767,9 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
                     const SizedBox(height: 4),
                     Text("Booked on ${b.createdAtFormatted}",
                         style: TextStyle(
-                            color: Colors.grey.shade400, fontSize: 12)),
+                            color:
+                                scheme.onSurfaceVariant.withOpacity(0.85),
+                            fontSize: 12)),
 
                     // OTP display (if pending)
                     if (b.beginOtp != null) ...[
@@ -740,6 +893,109 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          // ── Provider phone (shown ≤20 min before slot if still pending) ──
+                          if (b.showProviderPhone) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: Colors.orange.shade200),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    Icon(Icons.warning_amber_rounded,
+                                        color: Colors.orange.shade700,
+                                        size: 16),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      "Provider hasn't responded yet",
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.orange.shade800),
+                                    ),
+                                  ]),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Your slot starts in about ${b.minsUntilSlot} min. "
+                                    "You can try contacting them directly:",
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.orange.shade700),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  InkWell(
+                                    onTap: () async {
+                                      final uri = Uri(
+                                          scheme: 'tel',
+                                          path: b.providerPhone);
+                                      if (await canLaunchUrl(uri)) {
+                                        await launchUrl(uri);
+                                      }
+                                    },
+                                    child: Row(children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.shade100,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(Icons.phone,
+                                            color: Colors.orange.shade700,
+                                            size: 18),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        b.providerPhone,
+                                        style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange.shade800,
+                                            decoration:
+                                                TextDecoration.underline),
+                                      ),
+                                    ]),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
+                          // ── Auto-cancel banner ────────────────────────────
+                          if (b.autoCancelledForNoResponse) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: Colors.red.shade200),
+                              ),
+                              child: Row(children: [
+                                Icon(Icons.cancel_outlined,
+                                    color: Colors.red.shade600, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    "This booking was auto-cancelled because the provider did not respond before your scheduled slot.",
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red.shade700,
+                                        height: 1.4),
+                                  ),
+                                ),
+                              ]),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
                           // GPS share
                           if (widget.onShareGps != null) ...[
                             ElevatedButton.icon(
@@ -790,13 +1046,16 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
                           if (b.status == "completed" &&
                               _paymentStatus == "paid") ...[
                             Container(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                   color: Colors.green.shade50,
-                                  borderRadius: BorderRadius.circular(12)),
+                                  borderRadius:
+                                      BorderRadius.circular(12)),
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
                                 children: [
                                   Icon(Icons.check_circle,
                                       color: Colors.green.shade600),
@@ -811,8 +1070,9 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
                             const SizedBox(height: 8),
                           ],
 
-                          // Review
-                          if (widget.onReview != null)
+                          // Review — completed booking
+                          if (widget.onReview != null &&
+                              !b.autoCancelledForNoResponse)
                             ElevatedButton.icon(
                               onPressed: widget.onReview,
                               icon: const Icon(Icons.star_outline),
@@ -820,25 +1080,92 @@ class _SeekerBookingDetailSheetState extends State<_SeekerBookingDetailSheet> {
                               style: ElevatedButton.styleFrom(
                                   minimumSize: const Size.fromHeight(48)),
                             ),
-                          if (b.status == "completed" && b.isReviewed)
+
+                          // Review — auto-cancelled (no response)
+                          if (widget.onReview != null &&
+                              b.autoCancelledForNoResponse) ...[
+                            ElevatedButton.icon(
+                              onPressed: widget.onReview,
+                              icon: const Icon(Icons.star_half_outlined),
+                              label: const Text(
+                                  "Rate Provider's Responsiveness"),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.deepOrange,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size.fromHeight(48)),
+                            ),
+                          ],
+
+                          if ((b.status == "completed" ||
+                                  b.autoCancelledForNoResponse) &&
+                              b.isReviewed)
                             OutlinedButton.icon(
                               onPressed: null,
-                              icon: const Icon(Icons.check, color: Colors.grey),
+                              icon: const Icon(Icons.check,
+                                  color: Colors.grey),
                               label: const Text("Already Reviewed",
-                                  style: TextStyle(color: Colors.grey)),
+                                  style:
+                                      TextStyle(color: Colors.grey)),
                               style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(44)),
+                                  minimumSize:
+                                      const Size.fromHeight(44)),
                             ),
 
-                          // Cancel
+                          // Cancel (for not-yet-started bookings)
                           if (widget.onCancel != null) ...[
                             const SizedBox(height: 8),
                             OutlinedButton(
                               onPressed: widget.onCancel,
                               style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.red,
-                                  minimumSize: const Size.fromHeight(46)),
+                                  minimumSize:
+                                      const Size.fromHeight(46)),
                               child: const Text("Cancel Booking"),
+                            ),
+                          ],
+
+                          // Request Cancellation (for in_progress bookings)
+                          if (widget.onRequestCancellation != null) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton(
+                              onPressed: widget.onRequestCancellation,
+                              style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade800,
+                                  side: BorderSide(color: Colors.orange.shade700),
+                                  minimumSize: const Size.fromHeight(46)),
+                              child: const Text("Request Cancellation"),
+                            ),
+                          ],
+
+                          // Cancellation already requested banner
+                          if (widget.booking.status == "in_progress" &&
+                              widget.booking.cancellationRequested) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                border: Border.all(
+                                    color: Colors.orange.shade300),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.hourglass_top_rounded,
+                                      size: 18,
+                                      color: Colors.orange.shade700),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "Cancellation request sent. Waiting for provider approval.",
+                                      style: TextStyle(
+                                          color: Colors.orange.shade800,
+                                          fontSize: 13),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ],
@@ -944,32 +1271,7 @@ class _OtpBanner extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge(this.status);
 
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case "requested":   color = Colors.orange;  break;
-      case "accepted":    color = Colors.blue;    break;
-      case "in_progress": color = Colors.purple;  break;
-      case "completed":   color = Colors.green;   break;
-      case "rejected":    color = Colors.red;     break;
-      default:            color = Colors.grey;
-    }
-    final label = status.replaceAll("_", " ").toUpperCase();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-          color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-      child: Text(label,
-          style: TextStyle(
-              color: color, fontWeight: FontWeight.w600, fontSize: 10)),
-    );
-  }
-}
 
 class _GpsBanner extends StatelessWidget {
   final VoidCallback onShareGps;
@@ -1029,6 +1331,7 @@ class _ActionBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onColor = color.computeLuminance() > 0.6 ? Colors.black : Colors.white;
     final style = outlined
         ? OutlinedButton.styleFrom(
             foregroundColor: color,
@@ -1037,7 +1340,7 @@ class _ActionBtn extends StatelessWidget {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap)
         : ElevatedButton.styleFrom(
             backgroundColor: color,
-            foregroundColor: Colors.white,
+            foregroundColor: onColor,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap);
@@ -1060,11 +1363,15 @@ class _TapHint extends StatelessWidget {
   const _TapHint();
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(children: [
-      Icon(Icons.info_outline, size: 13, color: Colors.grey.shade400),
+      Icon(Icons.info_outline,
+          size: 13, color: scheme.onSurfaceVariant.withOpacity(0.85)),
       const SizedBox(width: 4),
       Text("Tap card for full details",
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          style: TextStyle(
+              fontSize: 11,
+              color: scheme.onSurfaceVariant.withOpacity(0.85))),
     ]);
   }
 }
@@ -1328,14 +1635,14 @@ class _UpiChooserSheetState extends State<_UpiChooserSheet> {
                           fontWeight: FontWeight.bold, fontSize: 15)),
                   const Spacer(),
                   Text("₹${total.toStringAsFixed(0)}",
-                      style: const TextStyle(
+                    style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
-                          color: Color(0xFF2E7D32))),
+                          color: Theme.of(context).colorScheme.primary)),
                 ]),
 
                 const SizedBox(height: 14),
-                Divider(color: Colors.grey.shade200),
+                Divider(color: Theme.of(context).dividerColor),
                 const SizedBox(height: 8),
 
                 // ── Transaction ID ───────────────────────────────────────
@@ -1362,8 +1669,9 @@ class _UpiChooserSheetState extends State<_UpiChooserSheet> {
                       widget.onPaid();     // update local state in detail sheet
                     },
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2E7D32),
-                        foregroundColor: Colors.white,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor:
+                            Theme.of(context).colorScheme.onPrimary,
                         minimumSize: const Size.fromHeight(48),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12))),
@@ -1382,9 +1690,10 @@ class _UpiChooserSheetState extends State<_UpiChooserSheet> {
   @override
   Widget build(BuildContext context) {
     final amount = widget.booking.amountDue;
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: scheme.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
@@ -1398,7 +1707,7 @@ class _UpiChooserSheetState extends State<_UpiChooserSheet> {
               width: 40, height: 4,
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: scheme.outlineVariant.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(2)),
             ),
           ),
@@ -1412,12 +1721,15 @@ class _UpiChooserSheetState extends State<_UpiChooserSheet> {
                       fontSize: 16, fontWeight: FontWeight.bold)),
               Text("Amount: ₹${amount.toStringAsFixed(0)}",
                   style: TextStyle(
-                      fontSize: 13, color: Colors.grey.shade600)),
+                      fontSize: 13,
+                      color: scheme.onSurfaceVariant.withOpacity(0.85))),
             ]),
           ]),
           const SizedBox(height: 4),
           Text("Choose your UPI app",
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: scheme.onSurfaceVariant.withOpacity(0.85))),
           const SizedBox(height: 16),
 
           // App grid

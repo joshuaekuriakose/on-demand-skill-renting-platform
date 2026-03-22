@@ -2,10 +2,20 @@ const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
   {
+    // For booking-based chats (accepted / in_progress / completed bookings).
     booking: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
-      required: true,
+      default: null,
+      index: true,
+    },
+
+    // For seeker-initiated direct conversations (Explore → Message provider).
+    // Exactly one of `booking` or `conversation` is set on every message.
+    conversation: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Conversation",
+      default: null,
       index: true,
     },
 

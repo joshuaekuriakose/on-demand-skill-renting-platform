@@ -4,6 +4,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'core/utils/app_entry.dart';
+import 'core/theme/theme_toggle_controller.dart';
+import 'core/theme/app_theme.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import 'package:skill_renting_app/features/auth/screens/register_screen.dart';
 import 'package:skill_renting_app/features/notifications/screens/notification_screen.dart';
@@ -41,6 +43,9 @@ Future<void> _onBackgroundMessage(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // Load persisted UI theme preference (light/dark).
+  await ThemeToggleController.load();
 
   // Register background handler BEFORE runApp
   FirebaseMessaging.onBackgroundMessage(_onBackgroundMessage);
@@ -162,57 +167,25 @@ class _SkillRentingAppState extends State<SkillRentingApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey, // <-- wire the global key here
-      debugShowCheckedModeBanner: false,
-      title: 'Skill Renting App',
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeToggleController.themeMode,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          navigatorKey: navigatorKey, // <-- wire the global key here
+          debugShowCheckedModeBanner: false,
+          title: 'Skill Renting App',
 
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        scaffoldBackgroundColor: Colors.grey.shade50,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: mode,
 
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 2,
-        ),
+          home: const AppEntry(),
 
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-        ),
-
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-
-      home: const AppEntry(),
-
-      routes: {
-        '/login':    (_) => LoginScreen(),
-        '/register': (_) => RegisterScreen(),
+          routes: {
+            '/login':    (_) => LoginScreen(),
+            '/register': (_) => RegisterScreen(),
+          },
+        );
       },
     );
   }

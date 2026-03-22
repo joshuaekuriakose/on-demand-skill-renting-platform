@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../notification_service.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/core/utils/notification_router.dart';
+import '../../../core/widgets/app_scaffold.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -14,6 +15,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   List _items = [];
   bool _loading = true;
   bool _markingAll = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -22,9 +24,23 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final data = await NotificationService.fetchNotifications();
-    if (mounted) setState(() { _items = data; _loading = false; });
+    setState(() {
+      _loading = true;
+      _errorMessage = null;
+    });
+    try {
+      final data = await NotificationService.fetchNotifications();
+      if (mounted) setState(() {
+        _items = data;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString();
+        _loading = false;
+      });
+    }
   }
 
   /// Mark read locally then navigate to the right screen.
@@ -110,7 +126,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: Row(
           children: [
@@ -123,10 +139,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     color: Colors.red,
                     borderRadius: BorderRadius.circular(10)),
                 child: Text("$_unreadCount",
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onError,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    )),
               ),
             ],
           ],
@@ -150,123 +167,190 @@ class _NotificationScreenState extends State<NotificationScreen> {
       ),
       body: _loading
           ? const SkeletonList()
-          : _items.isEmpty
+          : _errorMessage != null
               ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.notifications_none,
-                          size: 64, color: Colors.grey.shade300),
-                      const SizedBox(height: 12),
-                      const Text("No notifications",
-                          style: TextStyle(color: Colors.grey)),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.error_outline,
+                            color: Theme.of(context).colorScheme.error),
+                        const SizedBox(height: 12),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: _load,
+                          child: const Text("Retry"),
+                        ),
+                      ],
+                    ),
                   ),
                 )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    itemCount: _items.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(height: 1, color: Colors.grey.shade100),
-                    itemBuilder: (context, index) {
-                      final n =
-                          Map<String, dynamic>.from(_items[index] as Map);
-                      final isRead = n["isRead"] == true;
-                      final type = n["type"] as String?;
-                      final style = _styleFor(type);
-                      final label = _actionLabel(type);
+              : _items.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.notifications_none,
+                              size: 64,
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(height: 12),
+                          Text(
+                            "No notifications",
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: Theme.of(context).dividerColor),
+                        itemBuilder: (context, index) {
+                          final n =
+                              Map<String, dynamic>.from(_items[index] as Map);
+                          final isRead = n["isRead"] == true;
+                          final type = n["type"] as String?;
+                          final style = _styleFor(type);
+                          final label = _actionLabel(type);
 
-                      return InkWell(
-                        onTap: () => _onTap(n),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          color: isRead ? Colors.white : Colors.indigo.shade50,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Type icon
-                              Container(
-                                width: 42, height: 42,
-                                decoration: BoxDecoration(
-                                  color: isRead
-                                      ? Colors.grey.shade100
-                                      : style.color.withOpacity(0.12),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(style.icon,
-                                    size: 20,
-                                    color: isRead ? Colors.grey : style.color),
-                              ),
-                              const SizedBox(width: 12),
+                          final bg = isRead
+                              ? Theme.of(context).colorScheme.surface
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                                  .withOpacity(0.35);
 
-                              // Text
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(children: [
-                                      Expanded(
-                                        child: Text(n["title"] ?? "",
-                                            style: TextStyle(
+                          return InkWell(
+                            onTap: () => _onTap(n),
+                            child: AnimatedContainer(
+                              duration:
+                                  const Duration(milliseconds: 300),
+                              color: bg,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 14),
+                              child: Row(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  // Type icon
+                                  Container(
+                                    width: 42,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      color: isRead
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .surfaceVariant
+                                              .withOpacity(0.6)
+                                          : style.color.withOpacity(0.12),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      style.icon,
+                                      size: 20,
+                                      color:
+                                          isRead ? Theme.of(context).colorScheme.onSurfaceVariant : style.color,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Text
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(children: [
+                                          Expanded(
+                                            child: Text(
+                                              n["title"] ?? "",
+                                              style: TextStyle(
                                                 fontWeight: isRead
                                                     ? FontWeight.normal
                                                     : FontWeight.bold,
-                                                fontSize: 14)),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(_timeAgo(n["createdAt"]),
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.grey.shade400)),
-                                    ]),
-                                    const SizedBox(height: 4),
-                                    Text(n["message"] ?? "",
-                                        style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.grey.shade600,
-                                            height: 1.4)),
-                                    if (label.isNotEmpty) ...[
-                                      const SizedBox(height: 5),
-                                      Row(children: [
-                                        Icon(Icons.arrow_forward_ios,
-                                            size: 10,
-                                            color:
-                                                style.color.withOpacity(0.7)),
-                                        const SizedBox(width: 3),
-                                        Text(label,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            _timeAgo(n["createdAt"]),
                                             style: TextStyle(
+                                              fontSize: 11,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ]),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          n["message"] ?? "",
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant
+                                                .withOpacity(0.85),
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                        if (label.isNotEmpty) ...[
+                                          const SizedBox(height: 5),
+                                          Row(children: [
+                                            Icon(Icons.arrow_forward_ios,
+                                                size: 10,
+                                                color:
+                                                    style.color.withOpacity(0.7)),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              label,
+                                              style: TextStyle(
                                                 fontSize: 11,
-                                                color: style.color
-                                                    .withOpacity(0.8),
-                                                fontWeight: FontWeight.w500)),
-                                      ]),
-                                    ],
-                                  ],
-                                ),
-                              ),
-
-                              // Unread dot
-                              if (!isRead)
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.only(left: 6, top: 2),
-                                  child: Container(
-                                    width: 8, height: 8,
-                                    decoration: BoxDecoration(
-                                        color: style.color,
-                                        shape: BoxShape.circle),
+                                                color:
+                                                    style.color.withOpacity(0.85),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ]),
+                                        ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+
+                                  // Unread dot
+                                  if (!isRead)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                          left: 6, top: 2),
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: style.color,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
     );
   }
 }

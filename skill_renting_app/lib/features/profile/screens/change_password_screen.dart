@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../auth/auth_service.dart';
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -61,7 +62,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("Change Password"),
       ),

@@ -46,6 +46,17 @@ class AuthService {
     return null;
   }
 
+  /// Clears FCM token on server then wipes local storage.
+  static Future<void> logout() async {
+    final token = await AuthStorage.getToken();
+    if (token != null) {
+      try {
+        await ApiService.post('/users/save-token', {'token': ''}, token: token);
+      } catch (_) {}
+    }
+    await AuthStorage.clear();
+  }
+
   static Future<bool> changePassword(String currentPassword, String newPassword) async {
     final token = await AuthStorage.getToken();
     if (token == null) return false;

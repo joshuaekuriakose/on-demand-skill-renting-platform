@@ -98,6 +98,17 @@ const bookingSchema = new mongoose.Schema(
     isReviewed:         { type: Boolean, default: false },
     rescheduleRequested:{ type: Boolean, default: false },
     rescheduleReason:   { type: String },
+
+    // ── Cancellation request flow (for in_progress bookings) ──────────────────
+    // Seeker can request cancellation; provider must approve or deny.
+    cancellationRequested:    { type: Boolean, default: false },
+    cancellationRequestedAt:  { type: Date,    default: null },
+
+    // ── No-response auto-cancel flow ─────────────────────────────────────────────────────
+    // Set to the timestamp when the 10-min warning push was sent (prevents duplicate sends)
+    warningNotifiedAt:          { type: Date,    default: null },
+    // true when the scheduler auto-cancelled this booking due to no provider response
+    autoCancelledForNoResponse: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

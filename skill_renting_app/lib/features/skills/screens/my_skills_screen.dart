@@ -5,6 +5,7 @@ import 'package:skill_renting_app/features/skills/screens/add_skill_screen.dart'
 import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/features/bookings/screens/provider_calendar_screen.dart';
 import 'package:skill_renting_app/features/reviews/review_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -62,7 +63,7 @@ class _MySkillsScreenState extends State<MySkillsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("My Services"),
         actions: [
@@ -222,6 +223,7 @@ class _ServiceCardState extends State<_ServiceCard> {
   @override
   Widget build(BuildContext context) {
     final isActive = _s["isActive"] == true;
+    final scheme = Theme.of(context).colorScheme;
     final rating = (_s["rating"] as num?)?.toDouble() ?? 0.0;
     final totalReviews = _s["totalReviews"] ?? 0;
     final pricingUnit = _s["pricing"]?["unit"] ?? "hour";
@@ -237,7 +239,7 @@ class _ServiceCardState extends State<_ServiceCard> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
@@ -566,8 +568,8 @@ class _EditSkillSheetState extends State<_EditSkillSheet> {
       minChildSize: 0.5,
       maxChildSize: 0.96,
       builder: (_, ctrl) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -1064,7 +1066,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     final price = s["pricing"]?["amount"];
     final isActive = s["isActive"] == true;
 
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: Text(s["title"] ?? "Service")),
       body: RefreshIndicator(
         onRefresh: _loadReviews,
@@ -1273,9 +1275,9 @@ class _ReviewCardState extends State<_ReviewCard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -1456,18 +1458,19 @@ class _WhiteChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: scheme.primaryContainer.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: Colors.white),
+        Icon(icon, size: 13, color: scheme.onPrimaryContainer),
         const SizedBox(width: 4),
         Text(label,
-            style: const TextStyle(
-                color: Colors.white,
+            style: TextStyle(
+                color: scheme.onPrimaryContainer,
                 fontSize: 12,
                 fontWeight: FontWeight.w600)),
       ]),

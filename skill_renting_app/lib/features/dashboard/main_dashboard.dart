@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/features/auth/auth_service.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import '../skills/screens/skill_list_screen.dart';
 import '../bookings/screens/seeker_bookings_screen.dart';
 import '../bookings/screens/provider_bookings_screen.dart';
 import '../skills/screens/my_skills_screen.dart';
 import '../profile/screens/profile_screen.dart';
-import '../notifications/screens/notification_screen.dart';
+import '../notifications/Screens/notification_screen.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 import 'package:skill_renting_app/features/skills/models/skill_model.dart';
 import 'package:skill_renting_app/features/skills/skill_service.dart';
 import 'package:skill_renting_app/features/bookings/booking_service.dart';
 import 'package:skill_renting_app/features/bookings/models/booking_model.dart';
 import '../skills/screens/skill_detail_screen.dart';
+import 'package:skill_renting_app/features/chat/chat_list_screen.dart';
+import 'package:skill_renting_app/features/chat/message_service.dart';
+import 'package:skill_renting_app/core/widgets/dark_theme_toggle.dart';
+import 'package:skill_renting_app/core/theme/theme_toggle_controller.dart';
 
 class MainDashboard extends StatefulWidget {
   const MainDashboard({super.key});
@@ -24,6 +30,7 @@ class MainDashboard extends StatefulWidget {
 class _MainDashboardState extends State<MainDashboard> {
   String _userName = "";
   int _unreadCount = 0;
+  int _unreadMessageCount = 0;
 
   List<SkillModel> _featuredSkills = [];
   bool _loadingSkills = true;
@@ -77,6 +84,7 @@ class _MainDashboardState extends State<MainDashboard> {
     super.initState();
     _loadUserName();
     _loadNotificationCount();
+    _loadMessageCount();
     _loadFeaturedSkills();
     _loadActivity();
   }
@@ -92,9 +100,27 @@ class _MainDashboardState extends State<MainDashboard> {
       final res = await ApiService.get("/notifications/unread-count",
           token: token);
       if (res["statusCode"] == 200 && mounted) {
-        setState(() => _unreadCount = res["data"]["count"]);
+        setState(() => _unreadCount =
+            (res["data"]?["count"] as num?)?.toInt() ?? 0);
       }
-    } catch (_) {}
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load notifications: $e")),
+      );
+    }
+  }
+
+  Future<void> _loadMessageCount() async {
+    try {
+      final count = await MessageService.getTotalUnread();
+      if (mounted) setState(() => _unreadMessageCount = count);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load messages: $e")),
+      );
+    }
   }
 
   Future<void> _loadFeaturedSkills() async {
@@ -108,8 +134,13 @@ class _MainDashboardState extends State<MainDashboard> {
           _loadingSkills = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingSkills = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingSkills = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to load skills: $e")),
+        );
+      }
     }
   }
 
@@ -125,21 +156,27 @@ class _MainDashboardState extends State<MainDashboard> {
           _loadingActivity = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingActivity = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loadingActivity = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to load activity: $e")),
+        );
+      }
     }
   }
 
   Future<void> _refreshAll() async {
     await Future.wait([
       _loadNotificationCount(),
+      _loadMessageCount(),
       _loadFeaturedSkills(),
       _loadActivity(),
     ]);
   }
 
   Future<void> _logout(BuildContext context) async {
-    await AuthStorage.clear();
+    await AuthService.logout();
     if (!context.mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -176,7 +213,8 @@ class _MainDashboardState extends State<MainDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final theme = Theme.of(context);
+    return AppScaffold(
       appBar: AppBar(
         centerTitle: true,
         title: const Text("Home"),
@@ -192,6 +230,52 @@ class _MainDashboardState extends State<MainDashboard> {
             icon: const Icon(Icons.logout),
             onPressed: () => _logout(context),
           ),
+          IconButton(
+            icon: const Icon(Icons.brightness_6),
+            tooltip: "Toggle theme",
+            onPressed: () =>
+                ThemeToggleController.setDarkEnabled(!ThemeToggleController.isDark),
+          ),
+          // ── Messages icon ─────────────────────────────────────────────
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chat_bubble_outline),
+                onPressed: () async {
+                  setState(() => _unreadMessageCount = 0);
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const ChatListScreen()),
+                  );
+                  _loadMessageCount();
+                },
+              ),
+              if (_unreadMessageCount > 0)
+                Positioned(
+                  right: 6, top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10)),
+                    constraints:
+                        const BoxConstraints(minWidth: 16, minHeight: 16),
+                    child: Text(
+                      _unreadMessageCount > 9 ? "9+" : "$_unreadMessageCount",
+                      style: TextStyle(
+                        color: theme.colorScheme.onError,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          // ── Notifications icon ────────────────────────────────────────
           Stack(
             alignment: Alignment.center,
             children: [
@@ -222,10 +306,11 @@ class _MainDashboardState extends State<MainDashboard> {
                         const BoxConstraints(minWidth: 16, minHeight: 16),
                     child: Text(
                       _unreadCount > 9 ? "9+" : "$_unreadCount",
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: theme.colorScheme.onError,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
@@ -260,6 +345,7 @@ class _MainDashboardState extends State<MainDashboard> {
   // ── Hero ───────────────────────────────────────────────────────────────────
 
   Widget _buildHero(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
@@ -275,19 +361,20 @@ class _MainDashboardState extends State<MainDashboard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text("${_getGreeting()} 👋",
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: scheme.onPrimary,
                   fontSize: 20,
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(_userName,
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: scheme.onPrimary,
                   fontSize: 24,
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          const Text("Find skilled professionals or share your expertise.",
-              style: TextStyle(color: Colors.white70, fontSize: 14)),
+          Text("Find skilled professionals or share your expertise.",
+              style: TextStyle(
+                  color: scheme.onPrimary.withOpacity(0.7), fontSize: 14)),
         ],
       ),
     );
@@ -296,6 +383,7 @@ class _MainDashboardState extends State<MainDashboard> {
   // ── Featured ───────────────────────────────────────────────────────────────
 
   Widget _buildFeatured(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -319,7 +407,7 @@ class _MainDashboardState extends State<MainDashboard> {
               : _featuredSkills.isEmpty
                   ? Center(
                       child: Text("No services yet",
-                          style: TextStyle(color: Colors.grey.shade500)))
+                          style: TextStyle(color: scheme.onSurfaceVariant)))
                   : ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: _featuredSkills.length,
@@ -337,7 +425,7 @@ class _MainDashboardState extends State<MainDashboard> {
                             width: 130,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: scheme.surface,
                               borderRadius: BorderRadius.circular(14),
                               boxShadow: [
                                 BoxShadow(
@@ -528,13 +616,14 @@ class _BookingBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return DraggableScrollableSheet(
       initialChildSize: 0.55,
       minChildSize: 0.3,
       maxChildSize: 0.92,
       builder: (_, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: scheme.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -545,7 +634,7 @@ class _BookingBottomSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: scheme.outlineVariant.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(2)),
             ),
 
@@ -568,7 +657,7 @@ class _BookingBottomSheet extends StatelessWidget {
                   const Spacer(),
                   Text("${bookings.length} booking${bookings.length != 1 ? 's' : ''}",
                       style: TextStyle(
-                          color: Colors.grey.shade500, fontSize: 13)),
+                          color: scheme.onSurfaceVariant, fontSize: 13)),
                 ],
               ),
             ),
@@ -583,10 +672,12 @@ class _BookingBottomSheet extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.inbox_outlined,
-                              size: 48, color: Colors.grey.shade300),
+                              size: 48,
+                              color: scheme.onSurfaceVariant.withOpacity(0.7)),
                           const SizedBox(height: 10),
                           Text("Nothing here",
-                              style: TextStyle(color: Colors.grey.shade400)),
+                              style: TextStyle(
+                                  color: scheme.onSurfaceVariant.withOpacity(0.85))),
                         ],
                       ),
                     )
@@ -615,11 +706,12 @@ class _BookingSheetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final b = booking;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.2)),
         boxShadow: [
@@ -659,32 +751,31 @@ class _BookingSheetTile extends StatelessWidget {
 
           // Provider
           Row(children: [
-            const Icon(Icons.person_outline, size: 14, color: Colors.grey),
+            Icon(Icons.person_outline, size: 14, color: scheme.onSurfaceVariant),
             const SizedBox(width: 5),
             Text(b.providerName,
-                style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
           ]),
           const SizedBox(height: 4),
 
           // Slot
           Row(children: [
-            const Icon(Icons.access_time, size: 14, color: Colors.grey),
+            Icon(Icons.access_time, size: 14, color: scheme.onSurfaceVariant),
             const SizedBox(width: 5),
             Expanded(
               child: Text(b.slotRangeFormatted,
-                  style:
-                      const TextStyle(fontSize: 13, color: Colors.black87)),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface)),
             ),
           ]),
           const SizedBox(height: 4),
 
           // Address
           Row(children: [
-            const Icon(Icons.location_on, size: 14, color: Colors.grey),
+            Icon(Icons.location_on, size: 14, color: scheme.onSurfaceVariant),
             const SizedBox(width: 5),
             Expanded(
               child: Text(b.jobAddressFormatted,
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ),
@@ -755,6 +846,7 @@ class _ActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -762,7 +854,7 @@ class _ActivityCard extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 4),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
@@ -781,8 +873,10 @@ class _ActivityCard extends StatelessWidget {
                       color: color)),
               const SizedBox(height: 4),
               Text(title,
-                  style:
-                      const TextStyle(color: Colors.grey, fontSize: 12)),
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                  )),
             ],
           ),
         ),
@@ -809,12 +903,13 @@ class _DashboardIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
@@ -829,11 +924,13 @@ class _DashboardIcon extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, size: 26, color: Theme.of(context).primaryColor),
+                      Icon(icon, size: 26, color: scheme.primary),
                   const SizedBox(height: 8),
                   Text(label,
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600)),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: scheme.onSurface)),
                 ],
               ),
             ),

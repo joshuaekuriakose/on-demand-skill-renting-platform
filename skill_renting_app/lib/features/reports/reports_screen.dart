@@ -5,6 +5,7 @@ import 'report_model.dart';
 import 'report_service.dart';
 import 'report_pdf_builder.dart';
 import 'package:skill_renting_app/features/skills/skill_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -58,7 +59,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dCtx) => StatefulBuilder(
-        builder: (ctx, setDState) => AlertDialog(
+        builder: (ctx, setDState) {
+          final scheme = Theme.of(ctx).colorScheme;
+          return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text("Request Report",
               style: TextStyle(fontWeight: FontWeight.bold)),
@@ -67,20 +70,26 @@ class _ReportsScreenState extends State<ReportsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Select Service",
-                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+                Text(
+                  "Select Service",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant.withOpacity(0.85),
+                  ),
+                ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
                   value: selectedSkillId,
                   isExpanded: true,
                   decoration: InputDecoration(
                     filled: true,
-                    fillColor: Colors.grey.shade50,
+                    fillColor: scheme.surfaceContainerHighest,
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: Colors.grey.shade200)),
+                        borderSide: BorderSide(
+                            color: scheme.outlineVariant.withOpacity(0.7))),
                   ),
                   items: _mySkills
                       .map((s) => DropdownMenuItem<String>(
@@ -93,8 +102,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
 
                 const SizedBox(height: 16),
-                const Text("Date Range",
-                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+                Text(
+                  "Date Range",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant.withOpacity(0.85),
+                  ),
+                ),
                 const SizedBox(height: 6),
 
                 Row(children: [
@@ -188,7 +202,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   : const Text("Generate"),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
@@ -201,7 +216,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inbox_outlined, size: 56, color: Colors.grey.shade300),
+            Icon(
+              Icons.inbox_outlined,
+              size: 56,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 12),
             const Text("No Activity",
                 style: TextStyle(
@@ -210,7 +229,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Text(
               "You don't have any activity since your last report in the selected date range.",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -275,7 +297,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("My Reports"),
         actions: [
@@ -300,22 +322,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                     itemCount: _reports.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (_, i) =>
-                        _ReportCard(
-                          report: _reports[i],
-                          onDownload: () => _downloadReport(_reports[i]),
-                        ),
+                    itemBuilder: (_, i) => _ReportCard(
+                      report: _reports[i],
+                      onDownload: () => _downloadReport(_reports[i]),
+                    ),
                   ),
                 ),
     );
   }
 
   Widget _buildEmptyState() {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.bar_chart, size: 72, color: Colors.grey.shade300),
+          Icon(Icons.bar_chart,
+              size: 72, color: scheme.onSurfaceVariant),
           const SizedBox(height: 16),
           const Text("No reports yet",
               style: TextStyle(
@@ -324,7 +347,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Text(
             "Scheduled reports are generated automatically.\nOr tap the button below to request one.",
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade500),
+            style: TextStyle(color: scheme.onSurfaceVariant.withOpacity(0.85)),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
@@ -376,10 +399,11 @@ class _ReportCardState extends State<_ReportCard> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final r = widget.report;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -430,7 +454,8 @@ class _ReportCardState extends State<_ReportCard> {
                   const SizedBox(height: 4),
                   Text(r.periodLabel,
                       style: TextStyle(
-                          fontSize: 12, color: Colors.grey.shade500)),
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant.withOpacity(0.85))),
                   const SizedBox(height: 6),
                   Row(children: [
                     _InfoPill(
@@ -461,15 +486,19 @@ class _ReportCardState extends State<_ReportCard> {
                           if (mounted) setState(() => _busy = false);
                         },
                         icon: const Icon(Icons.download_rounded),
-                        color: Colors.indigo,
+                          color: scheme.primary,
                         tooltip: "Download PDF",
                         style: IconButton.styleFrom(
-                          backgroundColor: Colors.indigo.shade50,
+                          backgroundColor: scheme.primaryContainer.withOpacity(0.35),
                         ),
                       ),
-                Text("PDF",
-                    style: TextStyle(
-                        fontSize: 10, color: Colors.grey.shade400)),
+                Text(
+                  "PDF",
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: scheme.onSurfaceVariant.withOpacity(0.85),
+                  ),
+                ),
               ],
             ),
           ],
@@ -509,25 +538,27 @@ class _DatePickerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onPick,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.grey.shade50,
+          color: scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
               color: date != null
-                  ? Colors.indigo.shade200
-                  : Colors.grey.shade200),
+                  ? scheme.primaryContainer.withOpacity(0.6)
+                  : scheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
                 style: TextStyle(
-                    fontSize: 11, color: Colors.grey.shade500)),
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant.withOpacity(0.85))),
             const SizedBox(height: 4),
             Text(
               date != null
@@ -539,8 +570,8 @@ class _DatePickerTile extends StatelessWidget {
                       ? FontWeight.bold
                       : FontWeight.normal,
                   color: date != null
-                      ? Colors.indigo.shade700
-                      : Colors.grey.shade400),
+                      ? scheme.primary
+                      : scheme.onSurfaceVariant.withOpacity(0.7)),
             ),
           ],
         ),

@@ -6,6 +6,7 @@ import '../booking_service.dart';
 import 'package:skill_renting_app/features/profile/profile_service.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class BookingScheduleScreen extends StatefulWidget {
   final String skillId;
@@ -25,9 +26,18 @@ class BookingScheduleScreen extends StatefulWidget {
 class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   DateTime? selectedDate;
   List<dynamic> slots = [];
-  dynamic selectedSlot;
+  List<dynamic> selectedSlots = [];
   bool isLoading = false;
   List<Map<String, DateTime>> occupiedRanges = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-load availability as soon as the screen opens —
+    // for hourly this shows the date picker immediately,
+    // for daily it loads all available days right away.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAvailability());
+  }
 
   // ── PIN validation ─────────────────────────────────────────────────────────
   String? _pinError;
@@ -69,9 +79,14 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
       } else {
         setState(() { _pinError = "PIN code not found"; _pinLookedUpDistrict = null; });
       }
-    } catch (_) {
-      // Network error — don't block the user
-      setState(() { _pinError = null; });
+    } catch (e) {
+      // Network error — don't block the user, but let the user know
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to validate PIN: ${e.toString()}")),
+        );
+        setState(() { _pinError = null; });
+      }
     } finally {
       setState(() { _pinValidating = false; });
     }
@@ -136,8 +151,11 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
       }
       if (!mounted) return;
       setState(() { occupiedRanges = parsed; });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load occupied slots: ${e.toString()}")),
+      );
       setState(() { occupiedRanges = []; });
     }
   }
@@ -179,14 +197,21 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
         lastDate: DateTime.now().add(const Duration(days: 30)),
       );
       if (picked == null) return;
-      setState(() { selectedDate = picked; selectedSlot = null; isLoading = true; });
+      setState(() {
+        selectedDate = picked;
+        selectedSlots = [];
+        isLoading = true;
+      });
       final formattedDate = DateFormat('yyyy-MM-dd').format(picked);
       final result =
           await SkillService.fetchAvailableSlots(widget.skillId, formattedDate);
       await _fetchOccupiedSlots(formattedDate);
       setState(() { slots = result; isLoading = false; });
     } else if (widget.pricingUnit == "day") {
-      setState(() { selectedSlot = null; isLoading = true; });
+      setState(() {
+        selectedSlots = [];
+        isLoading = true;
+      });
       final result =
           await SkillService.fetchAvailableSlots(widget.skillId, "");
       await _fetchAllOccupiedSlots();
@@ -221,18 +246,37 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text("Schedule")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ElevatedButton(
-              onPressed: _loadAvailability,
-              child: const Text("Availability"),
-            ),
-            const SizedBox(height: 20),
+            // Show selected date header with change option (hourly only)
+            if (!isLoading && selectedDate != null && widget.pricingUnit == "hour")
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today_outlined, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      DateFormat('EEEE, d MMM yyyy').format(selectedDate!),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _loadAvailability,
+                      style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      child: const Text("Change date"),
+                    ),
+                  ],
+                ),
+              ),
             if (isLoading) const Center(child: CircularProgressIndicator()),
             if (!isLoading && slots.isNotEmpty)
               Expanded(
@@ -260,18 +304,24 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                     return GestureDetector(
                       onTap: isLocked
                           ? null
-                          : () => setState(() => selectedSlot = slot),
+                          : () => setState(() {
+                                if (selectedSlots.contains(slot)) {
+                                  selectedSlots.remove(slot);
+                                } else {
+                                  selectedSlots.add(slot);
+                                }
+                              }),
                       child: Container(
                         decoration: BoxDecoration(
                           color: isLocked
                               ? Colors.grey[400]
-                              : selectedSlot == slot
+                              : selectedSlots.contains(slot)
                                   ? Colors.indigo
                                   : inPenalty
                                       ? Colors.orange.shade100
                                       : Colors.grey[200],
                           borderRadius: BorderRadius.circular(8),
-                          border: inPenalty && selectedSlot != slot
+                          border: inPenalty && !selectedSlots.contains(slot)
                               ? Border.all(color: Colors.orange.shade400, width: 1.5)
                               : null,
                         ),
@@ -289,7 +339,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                                 fontWeight: FontWeight.w500,
                                 color: isLocked
                                     ? Colors.black38
-                                    : selectedSlot == slot
+                                    : selectedSlots.contains(slot)
                                         ? Colors.white
                                         : Colors.black87,
                               ),
@@ -299,7 +349,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                               Text("50% penalty",
                                   style: TextStyle(
                                       fontSize: 9,
-                                      color: selectedSlot == slot
+                                      color: selectedSlots.contains(slot)
                                           ? Colors.white70
                                           : Colors.orange.shade800,
                                       fontWeight: FontWeight.w500)),
@@ -311,7 +361,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                   },
                 ),
               ),
-            if (selectedSlot != null)
+            if (selectedSlots.isNotEmpty)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -328,14 +378,53 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
   // ── Booking dialog ─────────────────────────────────────────────────────────
 
   Future<void> _openBookingDialog() async {
-    final start = _buildSlotStart(selectedSlot);
-    if (start == null) {
+    if (selectedSlots.isEmpty) return;
+
+    // Convert selected slot tokens into concrete start times.
+    final selectedStarts = selectedSlots
+        .map(_buildSlotStart)
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+
+    if (selectedStarts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Invalid slot selected")),
       );
       return;
     }
-    final end = _buildSlotEnd(start);
+
+    final step = widget.pricingUnit == "hour"
+        ? const Duration(hours: 1)
+        : const Duration(days: 1);
+
+    // Group consecutive slots into "runs"; each run becomes one booking.
+    // Example (hour): 10:00, 11:00, 12:00 => one booking from 10:00..13:00.
+    final segments = <Map<String, DateTime>>[];
+    DateTime runStart = selectedStarts.first;
+    DateTime prev = selectedStarts.first;
+
+    for (final s in selectedStarts.skip(1)) {
+      final expected = prev.add(step);
+      final isConsecutive = s.difference(expected).abs() <= const Duration(seconds: 1);
+      if (isConsecutive) {
+        prev = s;
+      } else {
+        segments.add({
+          "start": runStart,
+          "end": _buildSlotEnd(prev),
+        });
+        runStart = s;
+        prev = s;
+      }
+    }
+
+    segments.add({
+      "start": runStart,
+      "end": _buildSlotEnd(prev),
+    });
+
+    final earliestStart = segments.first["start"]!;
 
     final profile = await ProfileService.getProfile();
     final profileAddress = profile?.address ?? {};
@@ -400,8 +489,16 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
             pinLookedUpDistrict = null;
           });
         }
-      } catch (_) {
-        setS(() { pinError = null; });
+      } catch (e) {
+        setS(() {
+          pinError = "PIN lookup failed. Please try again.";
+          pinLookedUpDistrict = null;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("PIN lookup failed: ${e.toString()}")),
+          );
+        }
       } finally {
         setS(() { pinValidating = false; });
       }
@@ -430,7 +527,7 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // ── Penalty warning note ────────────────────────────
-                  if (_isInPenaltyWindow(start)) ...[
+                  if (_isInPenaltyWindow(earliestStart)) ...[
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -658,17 +755,21 @@ class _BookingScheduleScreenState extends State<BookingScheduleScreen> {
     };
 
     try {
-      await BookingService.createBooking(
-        skillId: widget.skillId,
-        startDate: start,
-        endDate: end,
-        duration: 1,
-        description: description,
-        jobAddress: jobAddress,
-      );
+      int createdCount = 0;
+      for (final seg in segments) {
+        await BookingService.createBooking(
+          skillId: widget.skillId,
+          startDate: seg["start"]!,
+          endDate: seg["end"]!,
+          duration: 1,
+          description: description,
+          jobAddress: jobAddress,
+        );
+        createdCount++;
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Booking Requested")),
+        SnackBar(content: Text("Booking Requested (${createdCount})")),
       );
       Navigator.pop(context);
     } catch (e) {

@@ -6,6 +6,38 @@ import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/features/bookings/screens/navigation_screen.dart';
 import 'package:skill_renting_app/features/chat/chat_screen.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart' as _authSt;
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
+import 'package:skill_renting_app/features/skills/skill_service.dart';
+import 'dart:math' as _math;
+import 'package:skill_renting_app/core/services/api_service.dart';
+import 'package:skill_renting_app/features/profile/profile_service.dart';
+
+// ── Route-optimisation helpers ────────────────────────────────────────────────
+
+class _LatLng {
+  final double lat, lng;
+  const _LatLng(this.lat, this.lng);
+}
+
+double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+  double r(double d) => d * _math.pi / 180;
+  final dLat = r(lat2 - lat1);
+  final dLon = r(lon2 - lon1);
+  final a = _math.pow(_math.sin(dLat / 2), 2) +
+      _math.cos(r(lat1)) * _math.cos(r(lat2)) *
+      _math.pow(_math.sin(dLon / 2), 2);
+  return 6371.0 * 2 *
+      _math.atan2(_math.sqrt(a.toDouble()), _math.sqrt(1 - a.toDouble()));
+}
+
+String _ordinal(int n) {
+  if (n == 1) return '1st';
+  if (n == 2) return '2nd';
+  if (n == 3) return '3rd';
+  return '${n}th';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class ProviderBookingsScreen extends StatefulWidget {
   const ProviderBookingsScreen({super.key});
@@ -26,10 +58,57 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
   final Set<String> _busy = {};
   late TabController _tabController;
 
+  // Day-wise filter for the "Requests" tab.
+  String _selectedRequestDayKey = "";
+
+  // Cached available slots for hourly skills on the selected day.
+  bool _slotsLoading = false;
+  String _slotsLoadedForDayKey = "";
+  Map<String, List<dynamic>> _availableSlotsBySkill = {};
+
+  // Route-optimised ranking: bookingId → rank (1-based) and label
+  Map<String, int> _routeRanks = {};
+  Map<String, String> _routeLabels = {};
+
   // Badge count = active bookings whose IDs are NOT in this set.
   // Defined as static on ProviderBookingsScreen (widget class) for cross-screen access.
 
   static const _badgeStatuses = {"accepted", "in_progress", "completed"};
+
+  String _dayKey(DateTime dt) {
+    final y = dt.year.toString().padLeft(4, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    return "$y-$m-$d";
+  }
+
+  DateTime _dayFromKey(String dayKey) {
+    // Expected format: yyyy-MM-dd
+    final parts = dayKey.split("-");
+    final y = int.parse(parts[0]);
+    final m = int.parse(parts[1]);
+    final d = int.parse(parts[2]);
+    return DateTime(y, m, d);
+  }
+
+  String _dayLabel(DateTime dt) {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ];
+    final mm = months[dt.month - 1];
+    return "$mm ${dt.day}";
+  }
 
   @override
   void initState() {
@@ -57,7 +136,176 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
     setState(() => _loading = true);
     final data = await BookingService.fetchProviderBookings();
     data.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    if (mounted) setState(() { _bookings = data; _loading = false; });
+    if (mounted) {
+      setState(() {
+        _bookings = data;
+        _loading = false;
+
+        // Initialize the selected day for day-wise request filtering.
+        final requested = data.where((b) => b.status == "requested").toList()
+          ..sort((a, b) => a.startDate.compareTo(b.startDate));
+        if (requested.isNotEmpty) {
+          _selectedRequestDayKey = _dayKey(requested.first.startDate);
+        } else {
+          _selectedRequestDayKey = "";
+        }
+
+        // Reset slot cache because the selected day may change.
+        _slotsLoading = false;
+        _slotsLoadedForDayKey = "";
+        _availableSlotsBySkill = {};
+      });
+      _computeRouteRanks(_selectedRequestDayKey);
+    }
+  }
+
+  Future<void> _computeRouteRanks(String dayKey) async {
+    if (dayKey.isEmpty) return;
+
+    // Only look at requests for the currently selected day
+    final requests = _bookings
+        .where((b) => b.status == 'requested' && _dayKey(b.startDate) == dayKey)
+        .toList();
+    if (requests.isEmpty) {
+      if (mounted) setState(() { _routeRanks = {}; _routeLabels = {}; });
+      return;
+    }
+
+    final token = await _authSt.AuthStorage.getToken();
+    final profile = await ProfileService.getProfile();
+    final provPin = profile?.address?['pincode']?.toString();
+
+    // Collect unique pincodes from day's requests + provider
+    final allPins = <String>{};
+    if (provPin != null && provPin.isNotEmpty) allPins.add(provPin);
+    for (final b in requests) {
+      final pin = b.jobAddress?['pincode']?.toString();
+      if (pin != null && pin.isNotEmpty) allPins.add(pin);
+    }
+
+    // Geocode each pincode once
+    final coords = <String, _LatLng>{};
+    for (final pin in allPins) {
+      try {
+        final res = await ApiService.get('/utils/pincode/$pin', token: token);
+        if (res['statusCode'] == 200) {
+          final lat = (res['data']?['lat'] as num?)?.toDouble();
+          final lon = (res['data']?['lon'] as num?)?.toDouble();
+          if (lat != null && lon != null) coords[pin] = _LatLng(lat, lon);
+        }
+      } catch (_) {}
+    }
+
+    _LatLng? provPos = provPin != null ? coords[provPin] : null;
+
+    final ranks  = <String, int>{};
+    final labels = <String, String>{};
+
+    // ── Hourly bookings: route-chain optimisation ─────────────────────────
+    // Group by slot-hour. Within each slot pick the nearest from current pos,
+    // then advance current pos to that job for the next slot.
+    final hourlyRequests = requests.where((b) => b.pricingUnit == 'hour').toList();
+    if (hourlyRequests.isNotEmpty) {
+      final slotGroups = <String, List<BookingModel>>{};
+      for (final b in hourlyRequests) {
+        final d   = b.startDate;
+        final key = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+        slotGroups.putIfAbsent(key, () => []).add(b);
+      }
+      final sortedSlots = slotGroups.keys.toList()..sort();
+
+      _LatLng? currentPos = provPos;
+      int idx = 1;
+
+      for (final slotKey in sortedSlots) {
+        final group = slotGroups[slotKey]!;
+        BookingModel? best;
+        double bestDist = double.infinity;
+
+        for (final b in group) {
+          final pin = b.jobAddress?['pincode']?.toString();
+          double dist;
+          if (pin != null && coords[pin] != null && currentPos != null) {
+            dist = _haversineKm(currentPos.lat, currentPos.lng,
+                coords[pin]!.lat, coords[pin]!.lng);
+          } else {
+            dist = b.distanceKmEstimate ?? double.infinity;
+          }
+          if (dist < bestDist) { bestDist = dist; best = b; }
+        }
+
+        if (best != null) {
+          ranks[best.id]  = idx;
+          labels[best.id] = idx == 1
+              ? 'Closest to you'
+              : '${_ordinal(idx)} stop on your route';
+          final pin = best.jobAddress?['pincode']?.toString();
+          if (pin != null && coords[pin] != null) currentPos = coords[pin];
+          idx++;
+        }
+      }
+    }
+
+    // ── Daily bookings: just mark the nearest one "Closest" ───────────────
+    // No routing chain — provider visits one day job per day.
+    final dailyRequests = requests.where((b) => b.pricingUnit != 'hour').toList();
+    if (dailyRequests.isNotEmpty) {
+      BookingModel? closest;
+      double closestDist = double.infinity;
+
+      for (final b in dailyRequests) {
+        final pin = b.jobAddress?['pincode']?.toString();
+        double dist;
+        if (pin != null && coords[pin] != null && provPos != null) {
+          dist = _haversineKm(provPos.lat, provPos.lng,
+              coords[pin]!.lat, coords[pin]!.lng);
+        } else {
+          dist = b.distanceKmEstimate ?? double.infinity;
+        }
+        if (dist < closestDist) { closestDist = dist; closest = b; }
+      }
+
+      if (closest != null) {
+        ranks[closest.id]  = 1;
+        labels[closest.id] = 'Closest to you';
+      }
+    }
+
+    if (mounted) setState(() { _routeRanks = ranks; _routeLabels = labels; });
+  }
+
+  Future<void> _loadHourlySlotsForDay(String dayKey) async {
+    if (dayKey.isEmpty) return;
+    if (_slotsLoadedForDayKey == dayKey && _availableSlotsBySkill.isNotEmpty) {
+      return;
+    }
+
+    setState(() {
+      _slotsLoading = true;
+      _slotsLoadedForDayKey = dayKey;
+    });
+
+    try {
+      final dayRequests = _requests
+          .where((b) => _dayKey(b.startDate) == dayKey && b.pricingUnit == "hour")
+          .toList();
+      final skillIds = dayRequests.map((b) => b.skillId).toSet().toList();
+
+      final results = await Future.wait(
+        skillIds.map((skillId) async {
+          final slots = await SkillService.fetchAvailableSlots(skillId, dayKey);
+          return MapEntry(skillId, slots);
+        }),
+      );
+
+      setState(() {
+        _availableSlotsBySkill = Map<String, List<dynamic>>.fromEntries(results);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _slotsLoading = false);
+      }
+    }
   }
 
   Future<void> _updateStatus(String id, String action) async {
@@ -402,6 +650,17 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
     return map;
   }
 
+  Map<String, _SkillGroup> _requestsBySkillFor(List<BookingModel> requests) {
+    final map = <String, _SkillGroup>{};
+    for (final b in requests) {
+      map.putIfAbsent(
+        b.skillId,
+        () => _SkillGroup(skillId: b.skillId, skillTitle: b.skillTitle),
+      ).bookings.add(b);
+    }
+    return map;
+  }
+
   // ── Navigate helper ──────────────────────────────────────────────────────────
 
   void _navigate(BookingModel b) {
@@ -420,7 +679,7 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text("Job Queue"),
         bottom: TabBar(
@@ -462,13 +721,137 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
               controller: _tabController,
               children: [
                 // ── Requests tab ──────────────────────────────────────────
-                _RequestsTab(
-                  groups: _requestsBySkill,
-                  busy: _busy,
-                  onAccept: (id) => _updateStatus(id, "accept"),
-                  onReject: (id) => _updateStatus(id, "reject"),
-                  onTap: (b) => _showDetailSheet(b),
-                  onRefresh: _loadBookings,
+                Builder(
+                  builder: (ctx) {
+                    final scheme = Theme.of(ctx).colorScheme;
+                    final dayKeys = _requests
+                        .map((b) => _dayKey(b.startDate))
+                        .toSet()
+                        .toList()
+                      ..sort();
+
+                    final selectedKey = (_selectedRequestDayKey.isNotEmpty &&
+                            dayKeys.contains(_selectedRequestDayKey))
+                        ? _selectedRequestDayKey
+                        : (dayKeys.isNotEmpty ? dayKeys.first : "");
+
+                    final dayRequests = _requests
+                        .where((b) => _dayKey(b.startDate) == selectedKey)
+                        .toList();
+                    final dayGroups = _requestsBySkillFor(dayRequests);
+
+                    final hourSkillsPresent =
+                        dayRequests.any((b) => b.pricingUnit == "hour");
+
+                    if (selectedKey.isNotEmpty &&
+                        hourSkillsPresent &&
+                        _slotsLoadedForDayKey != selectedKey &&
+                        !_slotsLoading) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        _loadHourlySlotsForDay(selectedKey);
+                      });
+                    }
+
+                    return Column(
+                      children: [
+                        if (dayKeys.isNotEmpty)
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: dayKeys.map((k) {
+                                final label = _dayLabel(_dayFromKey(k));
+                                final selected = k == selectedKey;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ChoiceChip(
+                                    label: Text(label),
+                                    selected: selected,
+                                    backgroundColor: scheme.surfaceVariant,
+                                    selectedColor: scheme.primaryContainer,
+                                    labelStyle: TextStyle(
+                                      color: selected
+                                          ? scheme.onPrimaryContainer
+                                          : scheme.onSurfaceVariant,
+                                    ),
+                                    onSelected: (v) {
+                                      if (!v) return;
+                                      setState(() => _selectedRequestDayKey = k);
+                                      _loadHourlySlotsForDay(k);
+                                      _computeRouteRanks(k);
+                                    },
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+
+                        if (hourSkillsPresent) ...[
+                          if (selectedKey.isNotEmpty && _slotsLoading && _slotsLoadedForDayKey == selectedKey)
+                            const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Center(child: CircularProgressIndicator()),
+                            )
+                          else ...[
+                            const SizedBox(height: 4),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  "Available slots (${_dayLabel(_dayFromKey(selectedKey))})",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Shrink-wraps: no empty space when dropdowns are collapsed
+                            ListView(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              children: [
+                                for (final skillGroup in dayGroups.values)
+                                  _HourlySlotsForSkill(
+                                    skillId: skillGroup.skillId,
+                                    bookings: skillGroup.bookings,
+                                    occupiedBookings: _bookings
+                                        .where((b) =>
+                                            (b.status == 'accepted' ||
+                                             b.status == 'in_progress') &&
+                                            b.skillId == skillGroup.skillId &&
+                                            _dayKey(b.startDate) == selectedKey)
+                                        .toList(),
+                                    dayKey: selectedKey,
+                                    availableSlots: _availableSlotsBySkill[skillGroup.skillId] ?? [],
+                                    isLoading: _slotsLoading,
+                                    onTapBooking: (b) => _showDetailSheet(b),
+                                    onTapRequests: (list) =>
+                                        _showSlotRequestsSheet(list),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
+
+                        // Requests list for selected day (accept/reject)
+                        Expanded(
+                          child: _RequestsTab(
+                            groups: dayGroups,
+                            busy: _busy,
+                            onAccept: (id) => _updateStatus(id, "accept"),
+                            onReject: (id) => _updateStatus(id, "reject"),
+                            onTap: (b) => _showDetailSheet(b),
+                            onRefresh: _loadBookings,
+                            routeRanks: _routeRanks,
+                            routeLabels: _routeLabels,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 // ── Bookings tab ──────────────────────────────────────────
                 _BookingsTab(
@@ -517,6 +900,7 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
                 if (!mounted) return;
                 Navigator.push(context, MaterialPageRoute(
                   builder: (_) => ChatScreen(
+                    chatType:        "booking",
                     bookingId:       b.id,
                     otherPersonName: b.seekerName,
                     currentUserId:   myId,
@@ -524,6 +908,413 @@ class _ProviderBookingsScreenState extends State<ProviderBookingsScreen>
                 ));
               }
             : null,
+        onApproveCancellation: (b.status == "in_progress" && b.cancellationRequested)
+            ? () { Navigator.pop(context); _approveCancellation(b.id); }
+            : null,
+        onDenyCancellation: (b.status == "in_progress" && b.cancellationRequested)
+            ? () { Navigator.pop(context); _denyCancellation(b.id); }
+            : null,
+      ),
+    );
+  }
+
+  void _showSlotRequestsSheet(List<BookingModel> requests) {
+    if (requests.isEmpty) return;
+    final slot = requests.first.slotRangeFormatted;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        minChildSize: 0.4,
+        maxChildSize: 0.92,
+        builder: (_, ctrl) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Row(children: [
+                const Icon(Icons.inbox_outlined, color: Colors.orange),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${requests.length} Requests',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text(slot,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade500)),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                controller: ctrl,
+                padding: const EdgeInsets.all(12),
+                itemCount: requests.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (_, i) {
+                  final b = requests[i];
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showDetailSheet(b);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.orange.withOpacity(0.3)),
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 6, offset: const Offset(0, 2)),
+                        ],
+                      ),
+                      child: Row(children: [
+                        Container(
+                            width: 4, height: 56,
+                            decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(2))),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(b.seekerName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14)),
+                            const SizedBox(height: 3),
+                            Text(b.jobDistrictLabel,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500)),
+                            if (b.distanceKmEstimate != null)
+                              Text(b.distanceLabel,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade400)),
+                          ],
+                        )),
+                        Column(children: [
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _updateStatus(b.id, 'accept');
+                            },
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(70, 36),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                padding: EdgeInsets.zero),
+                            child: const Text('Accept',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                          const SizedBox(height: 4),
+                          OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _updateStatus(b.id, 'reject');
+                            },
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                minimumSize: const Size(70, 36),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                padding: EdgeInsets.zero),
+                            child: const Text('Reject',
+                                style: TextStyle(fontSize: 12)),
+                          ),
+                        ]),
+                      ]),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _approveCancellation(String bookingId) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final ok = await BookingService.approveCancellation(bookingId);
+      if (ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Cancellation approved.")));
+        _loadBookings();
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
+    }
+  }
+
+  Future<void> _denyCancellation(String bookingId) async {
+    if (_busy.contains(bookingId)) return;
+    setState(() => _busy.add(bookingId));
+    try {
+      final ok = await BookingService.denyCancellation(bookingId);
+      if (ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Cancellation request denied.")));
+        _loadBookings();
+      }
+    } finally {
+      if (mounted) setState(() => _busy.remove(bookingId));
+    }
+  }
+}
+
+// ── Hourly slots for a single skill (selected day) — collapsible ─────────────
+class _HourlySlotsForSkill extends StatefulWidget {
+  final String skillId;
+  final List<BookingModel> bookings;        // status == requested (pending)
+  final List<BookingModel> occupiedBookings; // status == accepted | in_progress
+  final String dayKey; // yyyy-MM-dd
+  final List<dynamic> availableSlots;
+  final bool isLoading;
+  final void Function(BookingModel)? onTapBooking;
+  final void Function(List<BookingModel>)? onTapRequests; // tapped slot with multi-requests
+
+  const _HourlySlotsForSkill({
+    required this.skillId,
+    required this.bookings,
+    required this.dayKey,
+    required this.availableSlots,
+    required this.isLoading,
+    this.occupiedBookings = const [],
+    this.onTapBooking,
+    this.onTapRequests,
+  });
+
+  @override
+  State<_HourlySlotsForSkill> createState() => _HourlySlotsForSkillState();
+}
+
+class _HourlySlotsForSkillState extends State<_HourlySlotsForSkill> {
+  bool _expanded = false; // collapsed by default
+
+  DateTime _dayFromKey(String key) {
+    final parts = key.split("-");
+    return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  }
+
+  DateTime? _slotStartFromTimeStr(DateTime day, String timeStr) {
+    final parts = timeStr.split(":");
+    if (parts.length != 2) return null;
+    final hh = int.tryParse(parts[0]);
+    final mm = int.tryParse(parts[1]);
+    if (hh == null || mm == null) return null;
+    return DateTime(day.year, day.month, day.day, hh, mm);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final day = _dayFromKey(widget.dayKey);
+    final skillTitle =
+        widget.bookings.isNotEmpty ? widget.bookings.first.skillTitle : "Skill";
+    final bookedCount = widget.bookings.length;
+    final totalSlots = widget.availableSlots.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        elevation: 0,
+        color: scheme.surfaceVariant,
+        child: Column(
+          children: [
+            // ── Header / toggle row ────────────────────────────────────────
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                      skillTitle,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  if (widget.isLoading)
+                    const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  if (!widget.isLoading && totalSlots > 0) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: bookedCount > 0
+                            ? scheme.primaryContainer.withOpacity(0.5)
+                            : scheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '$bookedCount/$totalSlots booked',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: bookedCount > 0
+                              ? scheme.onPrimaryContainer
+                              : scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.keyboard_arrow_down,
+                        size: 20, color: scheme.onSurfaceVariant),
+                  ),
+                ]),
+              ),
+            ),
+            // ── Expandable slots grid ──────────────────────────────────────
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 200),
+              crossFadeState:
+                  _expanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+              firstChild: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: widget.availableSlots.isEmpty
+                    ? Text(
+                        "No available slots",
+                        style: TextStyle(
+                            color: scheme.onSurfaceVariant.withOpacity(0.7)),
+                      )
+                    : Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: widget.availableSlots.map((slot) {
+                          final timeStr = slot?.toString() ?? "";
+                          final slotStart = _slotStartFromTimeStr(day, timeStr);
+                          if (slotStart == null) return const SizedBox.shrink();
+                          final slotEnd = slotStart.add(const Duration(hours: 1));
+
+                          bool _inSlot(BookingModel b) =>
+                              (slotStart.isAtSameMomentAs(b.startDate) ||
+                               slotStart.isAfter(b.startDate)) &&
+                              slotStart.isBefore(b.endDate);
+
+                          // Collect all pending requests for this slot
+                          final slotRequests = widget.bookings.where(_inSlot).toList();
+                          // Check for an active booking (accepted / in_progress)
+                          final occupied = widget.occupiedBookings
+                              .where(_inSlot).firstOrNull;
+
+                          if (occupied != null) {
+                            // ── Occupied chip ────────────────────────────
+                            final isInProgress =
+                                occupied.status == 'in_progress';
+                            final chipColor = isInProgress
+                                ? Colors.purple.shade700
+                                : Colors.green.shade700;
+                            final chipBg = isInProgress
+                                ? Colors.purple.shade50
+                                : Colors.green.shade50;
+                            return ActionChip(
+                              backgroundColor: chipBg,
+                              side: BorderSide(
+                                  color: chipColor.withOpacity(0.4)),
+                              avatar: Icon(
+                                  isInProgress
+                                      ? Icons.engineering
+                                      : Icons.lock_clock,
+                                  size: 14, color: chipColor),
+                              label: Text(
+                                '$timeStr  ${isInProgress ? "In progress" : "Occupied"}',
+                                style: TextStyle(
+                                    color: chipColor,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12),
+                              ),
+                              onPressed: () =>
+                                  widget.onTapBooking?.call(occupied),
+                            );
+                          }
+
+                          if (slotRequests.isNotEmpty) {
+                            // ── Requests chip ────────────────────────────
+                            return ActionChip(
+                              backgroundColor:
+                                  Colors.orange.shade50,
+                              side: BorderSide(
+                                  color: Colors.orange.shade300),
+                              avatar: Icon(Icons.inbox_outlined,
+                                  size: 14,
+                                  color: Colors.orange.shade800),
+                              label: Text(
+                                slotRequests.length == 1
+                                    ? '$timeStr  Request'
+                                    : '$timeStr  ${slotRequests.length} requests',
+                                style: TextStyle(
+                                    color: Colors.orange.shade800,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12),
+                              ),
+                              onPressed: () {
+                                if (slotRequests.length == 1) {
+                                  widget.onTapBooking?.call(
+                                      slotRequests.first);
+                                } else {
+                                  widget.onTapRequests?.call(
+                                      slotRequests);
+                                }
+                              },
+                            );
+                          }
+
+                          // ── Free slot ────────────────────────────────
+                          return Chip(
+                            backgroundColor: scheme.surface,
+                            side: BorderSide(
+                                color: scheme.outlineVariant
+                                    .withOpacity(0.5)),
+                            label: Text(timeStr,
+                                style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontSize: 12)),
+                          );
+                        }).toList(),
+                      ),
+              ),
+              secondChild: const SizedBox.shrink(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -540,6 +1331,8 @@ class _RequestsTab extends StatelessWidget {
   final void Function(String) onReject;
   final void Function(BookingModel) onTap;
   final Future<void> Function() onRefresh;
+  final Map<String, int> routeRanks;
+  final Map<String, String> routeLabels;
 
   const _RequestsTab({
     required this.groups,
@@ -548,23 +1341,9 @@ class _RequestsTab extends StatelessWidget {
     required this.onReject,
     required this.onTap,
     required this.onRefresh,
+    this.routeRanks = const {},
+    this.routeLabels = const {},
   });
-
-  /// Returns the id of the booking with the smallest distanceKmEstimate
-  /// across ALL groups. Returns null if no booking has a distance set.
-  String? _closestId() {
-    BookingModel? closest;
-    for (final g in groups.values) {
-      for (final b in g.bookings) {
-        if (b.distanceKmEstimate == null) continue;
-        if (closest == null ||
-            b.distanceKmEstimate! < closest.distanceKmEstimate!) {
-          closest = b;
-        }
-      }
-    }
-    return closest?.id;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -573,7 +1352,6 @@ class _RequestsTab extends StatelessWidget {
           child: Text("No pending requests", style: TextStyle(color: Colors.grey)));
     }
     final groupList = groups.values.toList();
-    final closestId = _closestId();
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView.builder(
@@ -587,7 +1365,8 @@ class _RequestsTab extends StatelessWidget {
                   .map((b) => _RequestCard(
                         booking: b,
                         isBusy: busy.contains(b.id),
-                        isClosest: b.id == closestId,
+                        routeRank: routeRanks[b.id],
+                        routeLabel: routeLabels[b.id],
                         onAccept: () => onAccept(b.id),
                         onReject: () => onReject(b.id),
                         onTap: () => onTap(b),
@@ -598,7 +1377,8 @@ class _RequestsTab extends StatelessWidget {
           return _SkillGroupTile(
             group: group,
             busy: busy,
-            closestId: closestId,
+            routeRanks: routeRanks,
+            routeLabels: routeLabels,
             onAccept: onAccept,
             onReject: onReject,
             onTap: onTap,
@@ -616,7 +1396,8 @@ class _RequestsTab extends StatelessWidget {
 class _SkillGroupTile extends StatefulWidget {
   final _SkillGroup group;
   final Set<String> busy;
-  final String? closestId;
+  final Map<String, int> routeRanks;
+  final Map<String, String> routeLabels;
   final void Function(String) onAccept;
   final void Function(String) onReject;
   final void Function(BookingModel) onTap;
@@ -627,7 +1408,8 @@ class _SkillGroupTile extends StatefulWidget {
     required this.onAccept,
     required this.onReject,
     required this.onTap,
-    this.closestId,
+    this.routeRanks = const {},
+    this.routeLabels = const {},
   });
 
   @override
@@ -639,10 +1421,11 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -668,7 +1451,8 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
                 AnimatedRotation(
                   turns: _expanded ? 0 : -0.25,
                   duration: const Duration(milliseconds: 200),
-                  child: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
+                  child: Icon(Icons.keyboard_arrow_down,
+                      color: scheme.onSurfaceVariant),
                 ),
               ]),
             ),
@@ -682,7 +1466,8 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
                   .map((b) => _RequestCard(
                         booking: b,
                         isBusy: widget.busy.contains(b.id),
-                        isClosest: b.id == widget.closestId,
+                        routeRank: widget.routeRanks[b.id],
+                        routeLabel: widget.routeLabels[b.id],
                         onAccept: () => widget.onAccept(b.id),
                         onReject: () => widget.onReject(b.id),
                         onTap: () => widget.onTap(b),
@@ -705,7 +1490,8 @@ class _SkillGroupTileState extends State<_SkillGroupTile> {
 class _RequestCard extends StatelessWidget {
   final BookingModel booking;
   final bool isBusy;
-  final bool isClosest;
+  final int? routeRank;    // 1 = closest to provider, 2+ = on-route stops
+  final String? routeLabel; // "Closest to you" / "2nd stop on your route"
   final VoidCallback onAccept;
   final VoidCallback onReject;
   final VoidCallback onTap;
@@ -717,7 +1503,8 @@ class _RequestCard extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onTap,
-    this.isClosest = false,
+    this.routeRank,
+    this.routeLabel,
     this.nested = false,
   });
 
@@ -725,6 +1512,24 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = booking;
     final hasDistance = b.distanceKmEstimate != null;
+    final scheme = Theme.of(context).colorScheme;
+
+    final isFirst   = routeRank == 1;
+    final isOnRoute = (routeRank ?? 0) > 1;
+    final isRouted  = isFirst || isOnRoute;
+
+    final routeBg = isFirst
+        ? Colors.green.withOpacity(0.08)
+        : isOnRoute
+            ? Colors.blue.withOpacity(0.06)
+            : Colors.transparent;
+    final barColor = isFirst
+        ? Colors.green
+        : isOnRoute
+            ? Colors.blue.shade400
+            : Colors.orange;
+    final badgeColor = isFirst ? Colors.green.shade700 : Colors.blue.shade700;
+    final badgeIcon  = isFirst ? Icons.near_me : Icons.route;
 
     return InkWell(
       onTap: onTap,
@@ -733,15 +1538,18 @@ class _RequestCard extends StatelessWidget {
         margin: nested ? EdgeInsets.zero : const EdgeInsets.only(bottom: 10),
         decoration: nested
             ? BoxDecoration(
-                border: Border(top: BorderSide(color: Colors.grey.shade100)),
-                // Subtle green tint on closest even when nested
-                color: isClosest ? Colors.green.shade50.withOpacity(0.5) : null,
+                border: Border(
+                  top: BorderSide(color: scheme.outlineVariant.withOpacity(0.8)),
+                ),
+                color: isRouted ? routeBg : null,
               )
             : BoxDecoration(
-                color: isClosest ? Colors.green.shade50 : Colors.white,
+                color: isRouted
+                    ? scheme.surface.withOpacity(1)
+                    : scheme.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: isClosest
-                    ? Border.all(color: Colors.green.shade200, width: 1.5)
+                border: isRouted
+                    ? Border.all(color: barColor.withOpacity(0.35), width: 1.5)
                     : null,
                 boxShadow: [
                   BoxShadow(
@@ -759,7 +1567,7 @@ class _RequestCard extends StatelessWidget {
                 width: 4,
                 height: 80,
                 decoration: BoxDecoration(
-                    color: isClosest ? Colors.green : Colors.orange,
+                    color: barColor,
                     borderRadius: BorderRadius.circular(2)),
               ),
               const SizedBox(width: 12),
@@ -768,32 +1576,35 @@ class _RequestCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Name + Closest badge ────────────────────────────────
+                    // ── Name + Route badge ──────────────────────────────────
                     Row(children: [
-                      const Icon(Icons.person_outline, size: 15, color: Colors.grey),
+                      Icon(Icons.person_outline,
+                          size: 15, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(b.seekerName,
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600, fontSize: 14)),
                       ),
-                      if (isClosest) ...[
+                      if (isRouted && routeLabel != null) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.green.shade600,
+                            color: badgeColor.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: badgeColor.withOpacity(0.35), width: 0.8),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.near_me, size: 11, color: Colors.white),
-                              SizedBox(width: 3),
-                              Text("Closest",
+                              Icon(badgeIcon, size: 11, color: badgeColor),
+                              const SizedBox(width: 3),
+                              Text(routeLabel!,
                                   style: TextStyle(
-                                      color: Colors.white,
+                                      color: badgeColor,
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold)),
                             ],
@@ -801,14 +1612,16 @@ class _RequestCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                       ],
-                      const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
+                      Icon(Icons.chevron_right,
+                          size: 18, color: scheme.onSurfaceVariant),
                     ]),
 
                     const SizedBox(height: 4),
 
                     // ── Locality  •  ~X.X km ───────────────────────────────
                     Row(children: [
-                      const Icon(Icons.location_on, size: 13, color: Colors.grey),
+                      Icon(Icons.location_on,
+                          size: 13, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -831,10 +1644,10 @@ class _RequestCard extends StatelessWidget {
                           }(),
                           style: TextStyle(
                             fontSize: 12,
-                            color: isClosest && hasDistance
-                                ? Colors.green.shade700
-                                : Colors.grey.shade600,
-                            fontWeight: isClosest && hasDistance
+                            color: isRouted && hasDistance
+                                ? barColor
+                                : scheme.onSurfaceVariant.withOpacity(0.85),
+                            fontWeight: isRouted && hasDistance
                                 ? FontWeight.w600
                                 : FontWeight.normal,
                           ),
@@ -847,13 +1660,16 @@ class _RequestCard extends StatelessWidget {
 
                     // ── District ───────────────────────────────────────────
                     Row(children: [
-                      const Icon(Icons.map_outlined, size: 13, color: Colors.grey),
+                      Icon(Icons.map_outlined,
+                          size: 13, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           b.jobDistrictLabel,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -863,13 +1679,16 @@ class _RequestCard extends StatelessWidget {
 
                     // ── Date • Slot ────────────────────────────────────────
                     Row(children: [
-                      const Icon(Icons.access_time, size: 13, color: Colors.grey),
+                      Icon(Icons.access_time,
+                          size: 13, color: scheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           b.slotRangeFormatted,
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurfaceVariant,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -987,6 +1806,7 @@ class _BookingListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final b = booking;
+    final scheme = Theme.of(context).colorScheme;
     Color statusColor;
     switch (b.status) {
       case "accepted":    statusColor = Colors.blue;   break;
@@ -999,7 +1819,7 @@ class _BookingListCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -1037,17 +1857,25 @@ class _BookingListCard extends StatelessWidget {
                   ]),
                   const SizedBox(height: 4),
                   Row(children: [
-                    const Icon(Icons.person_outline, size: 13, color: Colors.grey),
+                    Icon(Icons.person_outline,
+                        size: 13, color: scheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Text(b.seekerName,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant.withOpacity(0.85),
+                        )),
                   ]),
                   const SizedBox(height: 2),
                   Row(children: [
-                    const Icon(Icons.access_time, size: 13, color: Colors.grey),
+                    Icon(Icons.access_time,
+                        size: 13, color: scheme.onSurfaceVariant),
                     const SizedBox(width: 4),
                     Text(b.slotRangeFormatted,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant.withOpacity(0.85),
+                        )),
                   ]),
                   const SizedBox(height: 8),
 
@@ -1063,7 +1891,7 @@ class _BookingListCard extends StatelessWidget {
                                   child: CircularProgressIndicator(strokeWidth: 2)),
                               SizedBox(width: 8),
                               Text("Updating…",
-                                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                  style: TextStyle(fontSize: 12)),
                             ],
                           )
                         : Wrap(
@@ -1119,6 +1947,8 @@ class _BookingDetailSheet extends StatelessWidget {
   final VoidCallback? onComplete;
   final VoidCallback? onNavigate;
   final VoidCallback? onMessage;
+  final VoidCallback? onApproveCancellation;
+  final VoidCallback? onDenyCancellation;
 
   const _BookingDetailSheet({
     required this.booking,
@@ -1129,6 +1959,8 @@ class _BookingDetailSheet extends StatelessWidget {
     this.onComplete,
     this.onNavigate,
     this.onMessage,
+    this.onApproveCancellation,
+    this.onDenyCancellation,
   });
 
   @override
@@ -1150,8 +1982,8 @@ class _BookingDetailSheet extends StatelessWidget {
       minChildSize: 0.4,
       maxChildSize: 0.96,
       builder: (_, ctrl) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -1160,7 +1992,10 @@ class _BookingDetailSheet extends StatelessWidget {
               margin: const EdgeInsets.symmetric(vertical: 12),
               width: 40, height: 4,
               decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outlineVariant
+                      .withOpacity(0.7),
                   borderRadius: BorderRadius.circular(2)),
             ),
             Expanded(
@@ -1195,7 +2030,12 @@ class _BookingDetailSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text("Requested on ${b.createdAtFormatted}",
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                        style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant
+                                .withOpacity(0.85),
+                            fontSize: 12)),
 
                     const SizedBox(height: 20),
                     const _SectionLabel("Seeker"),
@@ -1324,6 +2164,67 @@ class _BookingDetailSheet extends StatelessWidget {
                                   minimumSize: const Size.fromHeight(46)),
                             ),
                           ],
+
+                          // Cancellation request: banner + approve/deny buttons
+                          if (booking.cancellationRequested) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                border: Border.all(color: Colors.orange.shade300),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(children: [
+                                    Icon(Icons.warning_amber_rounded,
+                                        size: 18, color: Colors.orange.shade700),
+                                    const SizedBox(width: 6),
+                                    Text("Customer Requested Cancellation",
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange.shade800,
+                                            fontSize: 13)),
+                                  ]),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    "The customer wants to cancel this ongoing booking. "
+                                    "You can approve or deny the request.",
+                                    style: TextStyle(
+                                        color: Colors.orange.shade800,
+                                        fontSize: 12,
+                                        height: 1.4),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: onApproveCancellation,
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.red.shade600,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size.fromHeight(44)),
+                                  child: const Text("Approve"),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: onDenyCancellation,
+                                  style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.green.shade700,
+                                      side: BorderSide(color: Colors.green.shade600),
+                                      minimumSize: const Size.fromHeight(44)),
+                                  child: const Text("Deny"),
+                                ),
+                              ),
+                            ]),
+                          ],
                         ],
                       ),
                   ],
@@ -1355,13 +2256,14 @@ class _Badge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onColor = color.computeLuminance() > 0.6 ? Colors.black : Colors.white;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration:
           BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
       child: Text("$count",
-          style: const TextStyle(
-              color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+          style: TextStyle(
+              color: onColor, fontSize: 11, fontWeight: FontWeight.bold)),
     );
   }
 }
@@ -1409,6 +2311,9 @@ class _SmallBtn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final onColor =
+        color.computeLuminance() > 0.6 ? Colors.black : Colors.white;
     final style = outlined
         ? OutlinedButton.styleFrom(
             foregroundColor: color,
@@ -1417,7 +2322,7 @@ class _SmallBtn extends StatelessWidget {
             tapTargetSize: MaterialTapTargetSize.shrinkWrap)
         : ElevatedButton.styleFrom(
             backgroundColor: color,
-            foregroundColor: Colors.white,
+            foregroundColor: onColor,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap);
@@ -1449,13 +2354,14 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Text(text.toUpperCase(),
           style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: Colors.grey.shade500,
+              color: scheme.onSurfaceVariant.withOpacity(0.85),
               letterSpacing: 0.8)),
     );
   }
@@ -1475,17 +2381,20 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: Colors.grey.shade400),
+        Icon(icon, size: 16, color: scheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Expanded(
           child: Text(text,
               style: TextStyle(
                 fontSize: bold ? 15 : 14,
                 fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-                color: subtle ? Colors.grey.shade500 : Colors.black87,
+                color: subtle
+                    ? scheme.onSurfaceVariant.withOpacity(0.85)
+                    : scheme.onSurface,
               )),
         ),
       ],

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/features/auth/auth_service.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import 'package:skill_renting_app/features/profile/profile_service.dart';
 import 'package:skill_renting_app/features/profile/models/profile_model.dart';
 import 'change_password_screen.dart';
 import 'package:skill_renting_app/features/reports/reports_screen.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,7 +32,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
-    await AuthStorage.clear();
+    await AuthService.logout();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -184,7 +186,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
+      // Theme-driven colors for consistent light/dark appearance.
       appBar: AppBar(
         title: const Text("Profile"),
         centerTitle: true,
@@ -200,15 +203,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         CircleAvatar(
                           radius: 45,
-                          backgroundColor: Colors.indigo,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                           child: Text(
                             _profile!.name.isNotEmpty
                                 ? _profile!.name[0].toUpperCase()
                                 : "U",
-                            style: const TextStyle(
-                                fontSize: 32,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 32,
+                              color: Theme.of(context).colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -219,7 +223,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 4),
                         Text(_profile!.email,
                             style:
-                                const TextStyle(color: Colors.grey)),
+                                TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.onSurfaceVariant)),
                         const SizedBox(height: 20),
                         const Divider(),
                         const SizedBox(height: 20),
@@ -292,12 +298,13 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
-        leading: Icon(icon, color: Colors.indigo),
+        leading: Icon(icon, color: scheme.primary),
         title: Text(title),
         subtitle: Text(value),
         trailing: onTap != null

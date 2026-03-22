@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
+import 'package:skill_renting_app/features/auth/auth_service.dart';
+import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 import 'package:skill_renting_app/features/auth/screens/login_screen.dart';
 import 'admin_service.dart';
 import 'admin_pdf_builder.dart';
+import 'package:skill_renting_app/core/widgets/dark_theme_toggle.dart';
+import 'package:skill_renting_app/core/theme/theme_toggle_controller.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers shared across the file
@@ -50,7 +54,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   int _tab = 0;
 
   Future<void> _logout() async {
-    await AuthStorage.clear();
+    await AuthService.logout();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(context,
         MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
@@ -58,8 +62,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+    return AppScaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         backgroundColor: _kPrimary,
         foregroundColor: Colors.white,
@@ -82,6 +86,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
               icon: const Icon(Icons.logout),
               tooltip: "Logout",
               onPressed: _logout),
+          IconButton(
+              icon: const Icon(Icons.brightness_6),
+              tooltip: "Toggle theme",
+              onPressed: () =>
+                  ThemeToggleController.setDarkEnabled(!ThemeToggleController.isDark)),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
@@ -690,8 +699,8 @@ class _RevenueScreenState extends State<_RevenueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+    return AppScaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         backgroundColor: _kPrimary, foregroundColor: Colors.white,
         title: const Text("Revenue — Completed Payments"),
@@ -814,8 +823,8 @@ class _UsersListScreenState extends State<_UsersListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+    return AppScaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(backgroundColor: _kPrimary, foregroundColor: Colors.white,
           title: Text(_title)),
       body: _loading
@@ -866,8 +875,8 @@ class _AllBookingsScreenState extends State<_AllBookingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+    return AppScaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(backgroundColor: _kPrimary, foregroundColor: Colors.white,
           title: Text(_title)),
       body: _loading
@@ -942,8 +951,8 @@ class _SkillBookingsScreenState extends State<_SkillBookingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+    return AppScaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         backgroundColor: _kPrimary, foregroundColor: Colors.white,
         title: Text(widget.skillTitle),
@@ -1305,8 +1314,16 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_data == null) return const Scaffold(body: Center(child: Text("Failed to load")));
+    if (_loading) {
+      return const AppScaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_data == null) {
+      return const AppScaffold(
+        body: Center(child: Text("Failed to load")),
+      );
+    }
 
     final user      = _data!["user"]             as Map? ?? {};
     final skills    = _data!["skills"]           as List? ?? [];
@@ -1315,8 +1332,8 @@ class _UserDetailScreenState extends State<_UserDetailScreen> {
     final reviews   = _data!["reviewsReceived"]  as List? ?? [];
     final isProvider = skills.isNotEmpty;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+    return AppScaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         backgroundColor: _kPrimary, foregroundColor: Colors.white,
         title: Text(user["name"]?.toString() ?? "User"),
