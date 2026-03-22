@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Standard Scaffold wrapper to keep background + surface styling consistent.
 class AppScaffold extends StatelessWidget {
   final PreferredSizeWidget? appBar;
   final Widget body;
@@ -23,9 +22,8 @@ class AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = backgroundColor ?? Theme.of(context).colorScheme.surface;
+    final bg = backgroundColor ?? Theme.of(context).colorScheme.surfaceContainerLowest;
     final content = padding != null ? Padding(padding: padding!, child: body) : body;
-
     return Scaffold(
       backgroundColor: bg,
       appBar: appBar,
@@ -36,4 +34,3 @@ class AppScaffold extends StatelessWidget {
     );
   }
 }
-

@@ -1,68 +1,40 @@
 import 'package:flutter/material.dart';
 import '../notification_service.dart';
-import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import 'package:skill_renting_app/core/utils/notification_router.dart';
-import '../../../core/widgets/app_scaffold.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
-
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
   List _items = [];
-  bool _loading = true;
-  bool _markingAll = false;
-  String? _errorMessage;
+  bool _loading = true, _markingAll = false;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _errorMessage = null;
-    });
+    setState(() { _loading = true; });
     try {
-      final data = await NotificationService.fetchNotifications();
-      if (mounted) setState(() {
-        _items = data;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString();
-        _loading = false;
-      });
-    }
+      final d = await NotificationService.fetchNotifications();
+      if (mounted) setState(() { _items = d; _loading = false; });
+    } catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
-  /// Mark read locally then navigate to the right screen.
   Future<void> _onTap(Map<String, dynamic> n) async {
     if (n["isRead"] != true) {
-      NotificationService.markRead(n["_id"]); // fire-and-forget
+      NotificationService.markRead(n["_id"]);
       setState(() {
         final i = _items.indexWhere((x) => x["_id"] == n["_id"]);
-        if (i != -1) {
-          final updated = Map<String, dynamic>.from(_items[i] as Map);
-          updated["isRead"] = true;
-          _items[i] = updated;
-        }
+        if (i != -1) { final m = Map<String, dynamic>.from(_items[i]); m["isRead"] = true; _items[i] = m; }
       });
     }
-    final type      = n["type"] as String?;
-    final bookingId = n["bookingId"]?.toString();
     NotificationRouter.navigate(
       navigatorState: Navigator.of(context),
-      type: type,
-      data: bookingId != null ? {"bookingId": bookingId} : null,
-    );
+      type: n["type"] as String?,
+      data: n["bookingId"] != null ? {"bookingId": n["bookingId"].toString()} : null);
   }
 
   Future<void> _markAllRead() async {
@@ -72,13 +44,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (!mounted) return;
     setState(() {
       _markingAll = false;
-      if (ok) {
-        _items = _items.map((n) {
-          final m = Map<String, dynamic>.from(n as Map);
-          m["isRead"] = true;
-          return m;
-        }).toList();
-      }
+      if (ok) _items = _items.map((n) { final m = Map<String, dynamic>.from(n); m["isRead"] = true; return m; }).toList();
     });
   }
 
@@ -90,7 +56,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     if (dt == null) return "";
     final d = DateTime.now().difference(dt);
     if (d.inDays > 30) return "${(d.inDays / 30).floor()}mo ago";
-    if (d.inDays > 0)  return "${d.inDays}d ago";
+    if (d.inDays > 0) return "${d.inDays}d ago";
     if (d.inHours > 0) return "${d.inHours}h ago";
     if (d.inMinutes > 0) return "${d.inMinutes}m ago";
     return "Just now";
@@ -98,259 +64,112 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   _NotifStyle _styleFor(String? type) {
     switch (type) {
-      case 'new_request':       return _NotifStyle(Icons.assignment_ind,   Colors.orange);
-      case 'booking_accepted':  return _NotifStyle(Icons.check_circle,     Colors.green);
-      case 'booking_rejected':  return _NotifStyle(Icons.cancel,           Colors.red);
-      case 'booking_completed': return _NotifStyle(Icons.task_alt,         Colors.teal);
-      case 'begin_otp':         return _NotifStyle(Icons.pin,              Colors.indigo);
-      case 'complete_otp':      return _NotifStyle(Icons.pin,              Colors.purple);
-      case 'service_started':   return _NotifStyle(Icons.play_circle,      Colors.blue);
-      case 'payment':           return _NotifStyle(Icons.payments,         const Color(0xFF2E7D32));
-      default:                  return _NotifStyle(Icons.notifications,    Colors.indigo);
-    }
-  }
-
-  String _actionLabel(String? type) {
-    switch (type) {
-      case 'new_request':       return 'View request →';
-      case 'booking_accepted':  return 'View booking →';
-      case 'booking_rejected':  return 'View booking →';
-      case 'booking_completed': return 'View booking →';
-      case 'begin_otp':         return 'View OTP →';
-      case 'complete_otp':      return 'Verify completion →';
-      case 'service_started':   return 'Track service →';
-      case 'payment':           return 'View payment →';
-      default:                  return '';
+      case 'new_request':       return const _NotifStyle(Icons.assignment_ind_outlined, Color(0xFFFBBF24));
+      case 'booking_accepted':  return const _NotifStyle(Icons.check_circle_outline_rounded, Color(0xFF34D399));
+      case 'booking_rejected':  return const _NotifStyle(Icons.cancel_outlined, Color(0xFFF87171));
+      case 'booking_completed': return const _NotifStyle(Icons.task_alt_rounded, Color(0xFF34D399));
+      case 'begin_otp':         return const _NotifStyle(Icons.pin_outlined, Color(0xFF60A5FA));
+      case 'complete_otp':      return const _NotifStyle(Icons.pin_outlined, Color(0xFFA78BFA));
+      case 'service_started':   return const _NotifStyle(Icons.play_circle_outline_rounded, Color(0xFF60A5FA));
+      case 'payment':           return const _NotifStyle(Icons.payments_outlined, Color(0xFF34D399));
+      case 'no_response_warning': return const _NotifStyle(Icons.warning_amber_rounded, Color(0xFFFBBF24));
+      case 'auto_cancelled':    return const _NotifStyle(Icons.cancel_rounded, Color(0xFFF87171));
+      default:                  return const _NotifStyle(Icons.notifications_outlined, Color(0xFFA78BFA));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      backgroundColor: cs.surfaceContainerLowest,
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Text("Notifications"),
-            if (_unreadCount > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(10)),
-                child: Text("$_unreadCount",
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onError,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    )),
-              ),
-            ],
+        backgroundColor: cs.surfaceContainerLowest,
+        surfaceTintColor: Colors.transparent,
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text("Notifications", style: tt.titleLarge),
+          if (_unreadCount > 0) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(10)),
+              child: Text("$_unreadCount",
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
           ],
-        ),
+        ]),
         actions: [
           if (_unreadCount > 0)
             _markingAll
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2)))
-                : TextButton.icon(
-                    onPressed: _markAllRead,
-                    icon: const Icon(Icons.done_all, size: 18),
-                    label: const Text("Mark all read",
-                        style: TextStyle(fontSize: 13)),
-                  ),
+                ? const Padding(padding: EdgeInsets.all(14),
+                    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                : TextButton(onPressed: _markAllRead,
+                    child: const Text("Mark all read", style: TextStyle(fontSize: 12))),
         ],
+        shape: Border(bottom: BorderSide(
+          color: isDark ? const Color(0xFF1E1C30) : cs.outlineVariant.withOpacity(0.5), width: 0.5)),
       ),
       body: _loading
-          ? const SkeletonList()
-          : _errorMessage != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.error_outline,
-                            color: Theme.of(context).colorScheme.error),
-                        const SizedBox(height: 12),
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
+          ? const Center(child: CircularProgressIndicator())
+          : _items.isEmpty
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.notifications_outlined, size: 56, color: cs.onSurfaceVariant),
+                  const SizedBox(height: 12),
+                  Text("No notifications", style: tt.bodySmall),
+                ]))
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    itemCount: _items.length,
+                    separatorBuilder: (_, __) => Divider(height: 1,
+                        color: isDark ? const Color(0xFF1E1C30) : cs.outlineVariant.withOpacity(0.4)),
+                    itemBuilder: (_, i) {
+                      final n    = Map<String, dynamic>.from(_items[i] as Map);
+                      final read = n["isRead"] == true;
+                      final s    = _styleFor(n["type"] as String?);
+                      return InkWell(
+                        onTap: () => _onTap(n),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          color: read ? Colors.transparent
+                              : (isDark ? cs.primary.withOpacity(0.04) : cs.primaryContainer.withOpacity(0.2)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Container(
+                              width: 40, height: 40,
+                              decoration: BoxDecoration(
+                                color: s.color.withOpacity(read ? 0.06 : 0.12),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: s.color.withOpacity(read ? 0.1 : 0.25), width: 0.8)),
+                              child: Icon(s.icon, size: 18, color: read ? cs.onSurfaceVariant : s.color)),
+                            const SizedBox(width: 12),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Row(children: [
+                                Expanded(child: Text(n["title"] ?? "",
+                                    style: tt.labelLarge?.copyWith(
+                                        fontWeight: read ? FontWeight.w400 : FontWeight.w700))),
+                                Text(_timeAgo(n["createdAt"]?.toString()),
+                                    style: tt.labelSmall?.copyWith(
+                                        color: read ? cs.onSurfaceVariant : s.color.withOpacity(0.8))),
+                              ]),
+                              const SizedBox(height: 3),
+                              Text(n["message"] ?? "", style: tt.bodySmall, maxLines: 2,
+                                  overflow: TextOverflow.ellipsis),
+                            ])),
+                            if (!read) ...[
+                              const SizedBox(width: 8),
+                              Container(width: 7, height: 7, margin: const EdgeInsets.only(top: 5),
+                                decoration: BoxDecoration(color: s.color, shape: BoxShape.circle)),
+                            ],
+                          ]),
                         ),
-                        const SizedBox(height: 16),
-                        OutlinedButton(
-                          onPressed: _load,
-                          child: const Text("Retry"),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                )
-              : _items.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.notifications_none,
-                              size: 64,
-                              color:
-                                  Theme.of(context).colorScheme.onSurfaceVariant),
-                          const SizedBox(height: 12),
-                          Text(
-                            "No notifications",
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        itemCount: _items.length,
-                        separatorBuilder: (_, __) =>
-                            Divider(height: 1, color: Theme.of(context).dividerColor),
-                        itemBuilder: (context, index) {
-                          final n =
-                              Map<String, dynamic>.from(_items[index] as Map);
-                          final isRead = n["isRead"] == true;
-                          final type = n["type"] as String?;
-                          final style = _styleFor(type);
-                          final label = _actionLabel(type);
-
-                          final bg = isRead
-                              ? Theme.of(context).colorScheme.surface
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer
-                                  .withOpacity(0.35);
-
-                          return InkWell(
-                            onTap: () => _onTap(n),
-                            child: AnimatedContainer(
-                              duration:
-                                  const Duration(milliseconds: 300),
-                              color: bg,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 14),
-                              child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  // Type icon
-                                  Container(
-                                    width: 42,
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      color: isRead
-                                          ? Theme.of(context)
-                                              .colorScheme
-                                              .surfaceVariant
-                                              .withOpacity(0.6)
-                                          : style.color.withOpacity(0.12),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      style.icon,
-                                      size: 20,
-                                      color:
-                                          isRead ? Theme.of(context).colorScheme.onSurfaceVariant : style.color,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-
-                                  // Text
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(children: [
-                                          Expanded(
-                                            child: Text(
-                                              n["title"] ?? "",
-                                              style: TextStyle(
-                                                fontWeight: isRead
-                                                    ? FontWeight.normal
-                                                    : FontWeight.bold,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            _timeAgo(n["createdAt"]),
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                          ),
-                                        ]),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          n["message"] ?? "",
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant
-                                                .withOpacity(0.85),
-                                            height: 1.4,
-                                          ),
-                                        ),
-                                        if (label.isNotEmpty) ...[
-                                          const SizedBox(height: 5),
-                                          Row(children: [
-                                            Icon(Icons.arrow_forward_ios,
-                                                size: 10,
-                                                color:
-                                                    style.color.withOpacity(0.7)),
-                                            const SizedBox(width: 3),
-                                            Text(
-                                              label,
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color:
-                                                    style.color.withOpacity(0.85),
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ]),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-
-                                  // Unread dot
-                                  if (!isRead)
-                                    Padding(
-                                      padding: const EdgeInsets.only(
-                                          left: 6, top: 2),
-                                      child: Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: BoxDecoration(
-                                          color: style.color,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                ),
     );
   }
 }

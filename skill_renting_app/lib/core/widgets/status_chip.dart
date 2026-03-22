@@ -1,56 +1,36 @@
 import 'package:flutter/material.dart';
 
-/// Simple status-to-chip helper for booking-like status strings.
-///
-/// Expects statuses like: requested, accepted, in_progress, completed, rejected, cancelled.
 class StatusChip extends StatelessWidget {
   final String status;
   final EdgeInsetsGeometry? padding;
+  const StatusChip({super.key, required this.status, this.padding});
 
-  const StatusChip({
-    super.key,
-    required this.status,
-    this.padding,
-  });
-
-  Color _colorFor(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    switch (status) {
-      case "accepted":
-        return scheme.primary;
-      case "in_progress":
-        return scheme.secondary;
-      case "completed":
-        return Colors.green.shade600;
-      case "rejected":
-        return Colors.red.shade600;
-      case "cancelled":
-        return scheme.outline;
-      case "requested":
-      default:
-        return scheme.tertiary;
+  Color _colorFor(String s) {
+    switch (s) {
+      case "accepted":    return const Color(0xFF60A5FA);
+      case "in_progress": return const Color(0xFFA78BFA);
+      case "completed":   return const Color(0xFF34D399);
+      case "rejected":    return const Color(0xFFF87171);
+      case "cancelled":   return const Color(0xFF9CA3AF);
+      case "requested":   return const Color(0xFFFBBF24);
+      default:            return const Color(0xFF9CA3AF);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final color = _colorFor(context);
-    final textColor = color.computeLuminance() > 0.45 ? Colors.black : Colors.white;
-
+    final color = _colorFor(status);
     return Container(
       padding: padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3), width: 0.8),
       ),
       child: Text(
         status.replaceAll("_", " ").toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: textColor,
-              fontWeight: FontWeight.w700,
-            ),
+        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.4),
       ),
     );
   }
 }
-

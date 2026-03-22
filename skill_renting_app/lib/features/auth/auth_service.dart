@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../core/services/api_service.dart';
 import 'models/user_model.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
@@ -46,17 +47,6 @@ class AuthService {
     return null;
   }
 
-  /// Clears FCM token on server then wipes local storage.
-  static Future<void> logout() async {
-    final token = await AuthStorage.getToken();
-    if (token != null) {
-      try {
-        await ApiService.post('/users/save-token', {'token': ''}, token: token);
-      } catch (_) {}
-    }
-    await AuthStorage.clear();
-  }
-
   static Future<bool> changePassword(String currentPassword, String newPassword) async {
     final token = await AuthStorage.getToken();
     if (token == null) return false;
@@ -66,5 +56,24 @@ class AuthService {
       token: token,
     );
     return response["statusCode"] == 200;
+  }
+
+  /// Clears FCM token from server BEFORE wiping local storage.
+  /// This prevents the old token from delivering notifications to
+  /// the next user who logs in on the same device.
+  static Future<void> logout() async {
+    try {
+      final token = await AuthStorage.getToken();
+      if (token != null) {
+        // Tell the server this device no longer belongs to this account
+        await ApiService.post("/users/save-token", {"token": ""}, token: token);
+      }
+      // Also unsubscribe from FCM topics / delete the instance ID
+      // so a fresh token is issued on next login
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {
+      // Best-effort — always clear local storage even if server call fails
+    }
+    await AuthStorage.clear();
   }
 }

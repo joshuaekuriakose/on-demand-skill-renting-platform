@@ -1,8 +1,7 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:skill_renting_app/features/common/widgets/skeleton_list.dart';
 import '../models/skill_model.dart';
 import 'package:skill_renting_app/features/reviews/review_service.dart';
-import 'package:skill_renting_app/core/widgets/app_scaffold.dart';
 import '../../bookings/screens/booking_schedule_screen.dart';
 import 'package:skill_renting_app/features/profile/profile_service.dart';
 import 'package:skill_renting_app/features/profile/models/profile_model.dart';
@@ -10,16 +9,10 @@ import 'package:skill_renting_app/features/profile/screens/profile_screen.dart';
 import 'package:skill_renting_app/features/chat/chat_screen.dart';
 import 'package:skill_renting_app/core/services/auth_storage.dart';
 import 'package:skill_renting_app/core/services/api_service.dart';
-import 'dart:math' as _math;
 
 class SkillDetailScreen extends StatefulWidget {
   final SkillModel skill;
-
-  const SkillDetailScreen({
-    super.key,
-    required this.skill,
-  });
-
+  const SkillDetailScreen({super.key, required this.skill});
   @override
   State<SkillDetailScreen> createState() => _SkillDetailScreenState();
 }
@@ -29,7 +22,7 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
   bool _loading = true;
   String _myId  = "";
   double? _distanceKm;
-  bool _distanceLoading = false;
+  bool _distanceLoading = true;
 
   @override
   void initState() {
@@ -44,96 +37,73 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
     if (mounted) setState(() => _myId = id);
   }
 
-  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
-    double r(double d) => d * _math.pi / 180;
-    final dLat = r(lat2 - lat1);
-    final dLon = r(lon2 - lon1);
-    final a = _math.pow(_math.sin(dLat / 2), 2) +
-        _math.cos(r(lat1)) * _math.cos(r(lat2)) *
-            _math.pow(_math.sin(dLon / 2), 2);
-    return 6371.0 * 2 *
-        _math.atan2(_math.sqrt(a.toDouble()), _math.sqrt(1 - a.toDouble()));
+  Future<void> _loadReviews() async {
+    final data = await ReviewService.fetchSkillReviews(widget.skill.id);
+    if (mounted) setState(() { _reviews = data; _loading = false; });
   }
 
   Future<void> _loadDistance() async {
-    final provPin = widget.skill.providerPincode;
-    if (provPin.isEmpty) return;
-
-    setState(() => _distanceLoading = true);
     try {
-      final token = await AuthStorage.getToken();
       final profile = await ProfileService.getProfile();
-      final seekerPin = profile?.address?['pincode']?.toString() ?? '';
-      if (seekerPin.isEmpty) return;
-      if (seekerPin == provPin) {
-        if (mounted) setState(() { _distanceKm = 1.5; _distanceLoading = false; });
-        return;
+      final seekerPin = profile?.address?["pincode"]?.toString();
+      final providerPin = widget.skill.providerPincode;
+      if (seekerPin == null || providerPin == null || seekerPin.isEmpty || providerPin.isEmpty) {
+        if (mounted) setState(() => _distanceLoading = false); return;
       }
-
-      final results = await Future.wait([
-        ApiService.get('/utils/pincode/$provPin',   token: token),
-        ApiService.get('/utils/pincode/$seekerPin', token: token),
-      ]);
-
-      final prov   = results[0];
-      final seeker = results[1];
-      if (prov['statusCode'] != 200 || seeker['statusCode'] != 200) return;
-
-      final pLat = (prov['data']?['lat']    as num?)?.toDouble();
-      final pLon = (prov['data']?['lon']    as num?)?.toDouble();
-      final sLat = (seeker['data']?['lat']  as num?)?.toDouble();
-      final sLon = (seeker['data']?['lon']  as num?)?.toDouble();
-      if (pLat == null || pLon == null || sLat == null || sLon == null) return;
-
-      final km = _haversineKm(pLat, pLon, sLat, sLon);
-      if (mounted) setState(() => _distanceKm = (km * 10).roundToDouble() / 10);
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _distanceLoading = false);
-    }
+      if (seekerPin == providerPin) {
+        if (mounted) setState(() { _distanceKm = 1.5; _distanceLoading = false; }); return;
+      }
+      final token = await AuthStorage.getToken();
+      final resA = await ApiService.get("/utils/pincode/$seekerPin", token: token);
+      final resB = await ApiService.get("/utils/pincode/$providerPin", token: token);
+      if (resA["statusCode"] == 200 && resB["statusCode"] == 200) {
+        final latA = (resA["data"]["lat"] as num?)?.toDouble();
+        final lonA = (resA["data"]["lon"] as num?)?.toDouble();
+        final latB = (resB["data"]["lat"] as num?)?.toDouble();
+        final lonB = (resB["data"]["lon"] as num?)?.toDouble();
+        if (latA != null && lonA != null && latB != null && lonB != null) {
+          final km = _haversine(latA, lonA, latB, lonB);
+          if (mounted) setState(() { _distanceKm = (km * 10).round() / 10; _distanceLoading = false; });
+          return;
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _distanceLoading = false);
   }
 
-  Future<void> _loadReviews() async {
-    final data = await ReviewService.fetchSkillReviews(widget.skill.id);
-    setState(() { _reviews = data; _loading = false; });
+  double _haversine(double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371.0;
+    final dLat = (lat2 - lat1) * pi / 180;
+    final dLon = (lon2 - lon1) * pi / 180;
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1 * pi / 180) * cos(lat2 * pi / 180) * sin(dLon / 2) * sin(dLon / 2);
+    return R * 2 * atan2(sqrt(a), sqrt(1 - a));
   }
 
-  bool _isProfileComplete(ProfileModel profile) {
-    final addr = profile.address;
-    return profile.name.trim().isNotEmpty &&
-        profile.phone.trim().isNotEmpty &&
-        (addr?["houseName"]?.toString().trim() ?? "").isNotEmpty &&
-        (addr?["locality"]?.toString().trim() ?? "").isNotEmpty &&
-        (addr?["pincode"]?.toString().trim() ?? "").isNotEmpty &&
-        (addr?["district"]?.toString().trim() ?? "").isNotEmpty;
+  bool _isProfileComplete(ProfileModel p) {
+    final a = p.address;
+    return p.name.trim().isNotEmpty && p.phone.trim().isNotEmpty &&
+        (a?["houseName"]?.toString().trim() ?? "").isNotEmpty &&
+        (a?["locality"]?.toString().trim()  ?? "").isNotEmpty &&
+        (a?["pincode"]?.toString().trim()   ?? "").isNotEmpty &&
+        (a?["district"]?.toString().trim()  ?? "").isNotEmpty;
   }
 
   Future<bool> _ensureProfileComplete() async {
     final profile = await ProfileService.getProfile();
     if (!mounted) return false;
-
     if (profile == null || !_isProfileComplete(profile)) {
-      final go = await showDialog<bool>(
-        context: context,
+      final go = await showDialog<bool>(context: context,
         builder: (_) => AlertDialog(
           title: const Text("Complete your profile"),
-          content: const Text(
-              "Please add your address details in Profile before booking."),
+          content: const Text("Add your address details before booking."),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text("Cancel")),
-            ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text("Go to Profile")),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text("Go to Profile")),
           ],
-        ),
-      );
-
-      if (go == true && mounted) {
-        await Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const ProfileScreen()));
-      }
+        ));
+      if (go == true && mounted)
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
       return false;
     }
     return true;
@@ -141,488 +111,329 @@ class _SkillDetailScreenState extends State<SkillDetailScreen> {
 
   double get _avgRating {
     if (_reviews.isEmpty) return 0;
-    final sum = _reviews.fold<double>(
-        0, (acc, r) => acc + (r["rating"] as num).toDouble());
-    return sum / _reviews.length;
+    return _reviews.fold<double>(0, (s, r) => s + (r["rating"] as num).toDouble()) / _reviews.length;
   }
 
-  String _timeAgo(String? isoDate) {
-    if (isoDate == null) return "";
-    final dt = DateTime.tryParse(isoDate);
-    if (dt == null) return "";
-    final diff = DateTime.now().difference(dt.toLocal());
-    if (diff.inDays > 30) return "${(diff.inDays / 30).floor()}mo ago";
-    if (diff.inDays > 0) return "${diff.inDays}d ago";
-    if (diff.inHours > 0) return "${diff.inHours}h ago";
+  String _timeAgo(String? iso) {
+    if (iso == null) return "";
+    final d = DateTime.now().difference(DateTime.tryParse(iso)?.toLocal() ?? DateTime.now());
+    if (d.inDays > 30) return "${(d.inDays / 30).floor()}mo ago";
+    if (d.inDays > 0)  return "${d.inDays}d ago";
+    if (d.inHours > 0) return "${d.inHours}h ago";
     return "Just now";
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs   = Theme.of(context).colorScheme;
+    final tt   = Theme.of(context).textTheme;
     final skill = widget.skill;
-    final scheme = Theme.of(context).colorScheme;
 
-    return AppScaffold(
-      appBar: AppBar(title: Text(skill.title)),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Info card ──────────────────────────────────────────────
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).primaryColor,
-                    Colors.indigo.shade400
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    return Scaffold(
+      backgroundColor: cs.surfaceContainerLowest,
+      body: CustomScrollView(
+        slivers: [
+          // ── Hero app bar ──────────────────────────────────────────────────
+          SliverAppBar(
+            expandedHeight: 180,
+            pinned: true,
+            backgroundColor: cs.surface,
+            surfaceTintColor: Colors.transparent,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [cs.primaryContainer, cs.secondaryContainer],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight),
                 ),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(skill.title,
-                      style: TextStyle(
-                          color: scheme.onPrimary,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
+                child: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    width: 64, height: 64,
+                    decoration: BoxDecoration(
+                      color: cs.surface.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cs.outlineVariant, width: 0.8),
+                    ),
+                    child: Icon(Icons.work_outline_rounded, size: 32, color: cs.primary),
+                  ),
+                  const SizedBox(height: 8),
                   Text(skill.category,
-                      style: TextStyle(
-                          color: scheme.onPrimary.withOpacity(0.7),
-                          fontSize: 14)),
-                  const SizedBox(height: 14),
-                  Row(children: [
-                    _Chip(
-                        icon: Icons.currency_rupee,
-                        label:
-                            "₹${skill.price.toStringAsFixed(0)} / ${skill.pricingUnit}"),
-                    const SizedBox(width: 10),
-                    _Chip(
-                        icon: Icons.star,
-                        label: skill.rating.toStringAsFixed(1)),
-                  ]),
-                ],
+                      style: TextStyle(color: cs.onPrimaryContainer.withOpacity(0.8), fontSize: 13)),
+                ])),
               ),
             ),
+          ),
 
-            const SizedBox(height: 14),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
 
-            // ── Provider card ────────────────────────────────────────
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2))
-                ],
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor:
-                      scheme.primaryContainer.withOpacity(0.5),
-                  child: Text(
-                    skill.providerName.isNotEmpty
-                        ? skill.providerName[0].toUpperCase()
-                        : '?',
-                    style: TextStyle(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        skill.providerName.isNotEmpty
-                            ? skill.providerName
-                            : 'Provider',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                      if (skill.providerLocality.isNotEmpty ||
-                          skill.providerDistrict.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Row(children: [
-                          Icon(Icons.location_on_outlined,
-                              size: 13,
-                              color: scheme.onSurfaceVariant),
-                          const SizedBox(width: 3),
-                          Flexible(
-                            child: Text(
-                              [
-                                if (skill.providerLocality.isNotEmpty)
-                                  skill.providerLocality,
-                                if (skill.providerDistrict.isNotEmpty)
-                                  skill.providerDistrict,
-                              ].join(', '),
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: scheme.onSurfaceVariant),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ]),
-                      ],
-                      if (skill.providerRating > 0) ...[
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          ...List.generate(
-                            5,
-                            (i) => Icon(
-                              i < skill.providerRating.round()
-                                  ? Icons.star
-                                  : Icons.star_border,
-                              size: 13,
-                              color: Colors.amber,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            '${skill.providerRating.toStringAsFixed(1)} (${skill.providerTotalReviews} reviews)',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: scheme.onSurfaceVariant),
-                          ),
-                        ]),
-                      ],
-                    ],
-                  ),
-                ),
-                // ── Distance badge ──────────────────────────────────
-                const SizedBox(width: 10),
-                if (_distanceLoading)
-                  SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 1.5,
-                        color: scheme.onSurfaceVariant),
-                  )
-                else if (_distanceKm != null)
+                // ── Title + price ─────────────────────────────────────────────
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: Text(skill.title, style: tt.headlineSmall)),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceVariant,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: scheme.outlineVariant.withOpacity(0.5)),
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: cs.primary.withOpacity(0.3), width: 0.8),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.near_me_outlined,
-                            size: 16,
-                            color: scheme.primary),
-                        const SizedBox(height: 3),
-                        Text(
-                          _distanceKm! < 1
-                              ? '${(_distanceKm! * 1000).round()} m'
-                              : '~${_distanceKm!.toStringAsFixed(1)} km',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: scheme.primary,
-                          ),
-                        ),
-                        Text(
-                          'away',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
+                    child: Text("₹${skill.price.toStringAsFixed(0)}/${skill.pricingUnit}",
+                        style: TextStyle(fontWeight: FontWeight.w700, color: cs.onPrimaryContainer, fontSize: 14)),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+
+                // ── Rating + distance ─────────────────────────────────────────
+                Row(children: [
+                  ...List.generate(5, (i) => Icon(
+                    i < skill.rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 16, color: const Color(0xFFF59E0B))),
+                  const SizedBox(width: 6),
+                  Text("${skill.rating.toStringAsFixed(1)} (${_reviews.length} reviews)",
+                      style: tt.labelMedium),
+                  const Spacer(),
+                  if (_distanceLoading)
+                    const SizedBox(width: 14, height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 1.5))
+                  else if (_distanceKm != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: cs.outlineVariant, width: 0.8),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.near_me_outlined, size: 13, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(_distanceKm! < 1
+                            ? "${(_distanceKm! * 1000).round()} m away"
+                            : "~${_distanceKm!.toStringAsFixed(1)} km away",
+                            style: tt.labelSmall),
+                      ]),
+                    ),
+                ]),
+
+                const SizedBox(height: 16),
+
+                // ── Provider card ─────────────────────────────────────────────
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: cs.outlineVariant.withOpacity(0.8), width: 0.8),
+                  ),
+                  child: Row(children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: cs.primaryContainer,
+                      child: Text(
+                        skill.providerName.isNotEmpty ? skill.providerName[0].toUpperCase() : "P",
+                        style: TextStyle(fontWeight: FontWeight.bold,
+                            fontSize: 16, color: cs.onPrimaryContainer)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(skill.providerName, style: tt.titleSmall),
+                      if (skill.providerLocality != null && skill.providerLocality!.isNotEmpty)
+                        Text("${skill.providerLocality}"
+                            "${skill.providerDistrict != null ? ', ${skill.providerDistrict}' : ''}",
+                            style: tt.bodySmall),
+                      if ((skill.providerRating ?? 0) > 0) ...[
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          const Icon(Icons.star_rounded, size: 12, color: Color(0xFFF59E0B)),
+                          const SizedBox(width: 3),
+                          Text("${skill.providerRating!.toStringAsFixed(1)} · ${skill.providerTotalReviews} reviews",
+                              style: tt.labelSmall),
+                        ]),
                       ],
+                    ])),
+                  ]),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Description ───────────────────────────────────────────────
+                if (skill.description.isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: cs.outlineVariant.withOpacity(0.8), width: 0.8),
+                    ),
+                    child: Text(skill.description,
+                        style: tt.bodyMedium?.copyWith(height: 1.6, color: cs.onSurfaceVariant)),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+
+                // ── CTA buttons ───────────────────────────────────────────────
+                Row(children: [
+                  Expanded(
+                    child: SizedBox(height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          if (_myId.isEmpty) return;
+                          await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
+                            chatType: "direct",
+                            providerId: skill.providerId,
+                            skillId: skill.id,
+                            otherPersonName: skill.providerName.isNotEmpty ? skill.providerName : "Provider",
+                            currentUserId: _myId,
+                          )));
+                        },
+                        icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                        label: const Text("Message"),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SizedBox(height: 48,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          final ok = await _ensureProfileComplete();
+                          if (!ok || !mounted) return;
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => BookingScheduleScreen(
+                            skillId: skill.id, pricingUnit: skill.pricingUnit)));
+                        },
+                        icon: const Icon(Icons.calendar_today_rounded, size: 16),
+                        label: const Text("Book"),
+                      ),
+                    ),
+                  ),
+                ]),
+
+                const SizedBox(height: 24),
+
+                // ── Reviews ───────────────────────────────────────────────────
+                Row(children: [
+                  Expanded(child: Text("Reviews", style: tt.titleMedium)),
+                  if (_reviews.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.3), width: 0.8),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.star_rounded, size: 13, color: Color(0xFFF59E0B)),
+                        const SizedBox(width: 4),
+                        Text("${_avgRating.toStringAsFixed(1)} · ${_reviews.length}",
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFF59E0B))),
+                      ]),
+                    ),
+                ]),
+                const SizedBox(height: 12),
+
+                _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _reviews.isEmpty
+                        ? Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: cs.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: cs.outlineVariant.withOpacity(0.8), width: 0.8),
+                            ),
+                            child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.rate_review_outlined, size: 36, color: cs.onSurfaceVariant.withOpacity(0.4)),
+                              const SizedBox(height: 8),
+                              Text("No reviews yet", style: tt.bodySmall),
+                            ])),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _reviews.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            itemBuilder: (_, i) => _ReviewCard(
+                                review: _reviews[i], timeAgo: _timeAgo, cs: cs, tt: tt),
+                          ),
+
+                const SizedBox(height: 32),
               ]),
             ),
-
-            const SizedBox(height: 16),
-
-            // Description
-            if (skill.description.isNotEmpty) ...[
-              Text(skill.description,
-                  style:
-                      const TextStyle(fontSize: 14, height: 1.5)),
-              const SizedBox(height: 20),
-            ],
-
-            // Action buttons — Book and Message
-            Row(
-              children: [
-                // Message button
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      if (_myId.isEmpty) return;
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ChatScreen(
-                            chatType:        "direct",
-                            providerId:      skill.providerId,
-                            skillId:         skill.id,
-                            otherPersonName: skill.providerName.isNotEmpty
-                                ? skill.providerName
-                                : "Provider",
-                            currentUserId:   _myId,
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                    label: const Text("Message"),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      side: BorderSide(color: scheme.primary),
-                      foregroundColor: scheme.primary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Book button
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final ok = await _ensureProfileComplete();
-                      if (!ok || !context.mounted) return;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => BookingScheduleScreen(
-                            skillId:     skill.id,
-                            pricingUnit: skill.pricingUnit,
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48)),
-                    child: const Text("Book Service"),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // ── Reviews ────────────────────────────────────────────────
-            Row(
-              children: [
-                const Text("Reviews",
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                if (_reviews.isNotEmpty)
-                  Text(
-                    "⭐ ${_avgRating.toStringAsFixed(1)} · ${_reviews.length}",
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            _loading
-                ? const SkeletonList()
-                : _reviews.isEmpty
-                    ? const Text("No reviews yet",
-                        style: TextStyle(color: Colors.grey))
-                    : ListView.builder(
-                        shrinkWrap: true,
-                        physics:
-                            const NeverScrollableScrollPhysics(),
-                        itemCount: _reviews.length,
-                        itemBuilder: (context, index) {
-                          final r = _reviews[index];
-                          return _PublicReviewCard(
-                              review: r, timeAgo: _timeAgo);
-                        },
-                      ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ── Public review card (seeker view — read-only, shows reply if present) ──────
-
-class _PublicReviewCard extends StatelessWidget {
+class _ReviewCard extends StatelessWidget {
   final Map review;
   final String Function(String?) timeAgo;
-
-  const _PublicReviewCard(
-      {required this.review, required this.timeAgo});
+  final ColorScheme cs;
+  final TextTheme tt;
+  const _ReviewCard({required this.review, required this.timeAgo, required this.cs, required this.tt});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final r = review;
     final rating = (r["rating"] as num?)?.toInt() ?? 0;
-    final reviewerName = r["reviewer"]?["name"] ?? "User";
+    final name   = r["reviewer"]?["name"] ?? "User";
     final comment = r["comment"]?.toString() ?? "";
     final replyText = r["providerReply"]?["text"]?.toString();
     final repliedAt = r["providerReply"]?["repliedAt"]?.toString();
-    final hasReply = replyText != null && replyText.isNotEmpty;
+    final hasReply  = replyText != null && replyText.isNotEmpty;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
-        ],
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.8), width: 0.8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: scheme.primaryContainer,
-                child: Text(
-                  reviewerName.isNotEmpty
-                      ? reviewerName[0].toUpperCase()
-                      : "U",
-                  style: TextStyle(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(reviewerName,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 14)),
-                    Text(timeAgo(r["createdAt"]),
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: scheme.onSurfaceVariant.withOpacity(0.85))),
-                  ],
-                ),
-              ),
-              Row(
-                children: List.generate(
-                  5,
-                  (i) => Icon(
-                    i < rating ? Icons.star : Icons.star_border,
-                    size: 14,
-                    color: Colors.amber,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (comment.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(comment,
-                style: const TextStyle(fontSize: 14, height: 1.4)),
-          ],
-
-          // Provider reply — public, read-only
-          if (hasReply) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: scheme.outlineVariant),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.reply,
-                          size: 14, color: scheme.primary),
-                      const SizedBox(width: 4),
-                      Text("Provider's reply",
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: scheme.primary)),
-                      const Spacer(),
-                      Text(timeAgo(repliedAt),
-                          style: TextStyle(
-                              fontSize: 11,
-                              color:
-                                  scheme.onSurfaceVariant.withOpacity(0.85))),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(replyText!,
-                      style:
-                          const TextStyle(fontSize: 13, height: 1.4)),
-                ],
-              ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          CircleAvatar(radius: 16, backgroundColor: cs.primaryContainer,
+            child: Text(name.isNotEmpty ? name[0].toUpperCase() : "U",
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: cs.onPrimaryContainer))),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: tt.labelLarge),
+            Text(timeAgo(r["createdAt"]), style: tt.labelSmall),
+          ])),
+          Row(children: List.generate(5, (i) => Icon(
+            i < rating ? Icons.star_rounded : Icons.star_outline_rounded,
+            size: 14, color: const Color(0xFFF59E0B)))),
+        ]),
+        if (comment.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(comment, style: tt.bodySmall?.copyWith(color: cs.onSurface, height: 1.5)),
+        ],
+        if (hasReply) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant.withOpacity(0.6), width: 0.8),
             ),
-          ],
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.reply_rounded, size: 13, color: cs.primary),
+                const SizedBox(width: 4),
+                Text("Provider's reply", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: cs.primary)),
+                const Spacer(),
+                Text(timeAgo(repliedAt), style: tt.labelSmall),
+              ]),
+              const SizedBox(height: 6),
+              Text(replyText!, style: tt.bodySmall?.copyWith(color: cs.onSurface, height: 1.4)),
+            ]),
+          ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Chip for header ───────────────────────────────────────────────────────────
-
-class _Chip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _Chip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: scheme.onPrimaryContainer),
-          const SizedBox(width: 4),
-          Text(label,
-              style: TextStyle(
-                  color: scheme.onPrimaryContainer,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600)),
-        ],
-      ),
+      ]),
     );
   }
 }
